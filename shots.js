@@ -247,6 +247,68 @@ const SEED = `(async () => {
     text: 'Se quedó sin tema al reorganizar los estantes. El texto sigue entero.'
   });
 
+  /* El texto sale aparte para que se lea aqui tal cual se escribe en el papel:
+     el nombre en LaTeX se convierte al teclear, asi que en el archivo ya hay
+     letras de verdad. */
+  const TEXTO_ING = [
+    '## Esfuerzo normal',
+    '',
+    'El esfuerzo es la fuerza por unidad de area. Se reparte uniforme solo si',
+    'la carga pasa por el centroide de la seccion.',
+    '',
+    '$$',
+    'σ = P/A',
+    '$$',
+    '',
+    'La deformacion unitaria ε no tiene unidades: es cuanto se alarga',
+    'la pieza dividido por lo que media, $ε = δ/L$.',
+    '',
+    '>Mientras no pases del limite elastico, las dos van de la mano por la ley',
+    'de Hooke y la pendiente es el modulo de Young. #hooke#<',
+    '',
+    '$$',
+    'σ = E*ε',
+    'δ = (P*L)/(A*E)',
+    '$$',
+    '',
+    '!Ojo con el area: en un perno roscado manda el area del nucleo, no la',
+    'nominal. Es el fallo tipico y ahi $σ_real$ se dispara.!',
+    '',
+    '## Esfuerzo cortante',
+    '',
+    'En una viga el cortante no se reparte igual por toda la seccion:',
+    '',
+    '$$',
+    'τ = (V*Q)/(I*t)',
+    '$$',
+    '',
+    '- τ_max esta en el eje neutro, no en las fibras extremas',
+    '- En una seccion rectangular vale 1,5 veces el cortante medio',
+    '',
+    'Y el radio del circulo de Mohr, que sale de las dos:',
+    '',
+    '$$',
+    'R = √(((σ_x - σ_y)/2)^2 + τ_xy^2)',
+    '$$'
+  ].join(String.fromCharCode(10));
+
+  /* Un tema de ingenieria, que es donde se ven las formulas. Las letras van
+     en Unicode de verdad en el texto, como quedan al teclear su nombre. */
+  const gIng = await S.mutate('spotGroup:add', { name: 'Ingenieria' });
+  const idIng = S.data.spotGroups[S.data.spotGroups.length - 1].id;
+  await S.mutate('spot:add', {
+    name: 'Mecanica de Materiales', groupId: idIng,
+    note: 'Esfuerzo, deformacion y el circulo de Mohr.'
+  });
+  const temaIng = S.data.spots[S.data.spots.length - 1];
+  await S.mutate('noteType:add', { name: 'Esfuerzo y deformacion', spotId: temaIng.id });
+  const carpIng = S.data.noteTypes[S.data.noteTypes.length - 1];
+  await S.mutate('review:add', {
+    spotId: temaIng.id, typeId: carpIng.id,
+    title: 'Esfuerzo normal y deformacion',
+    text: TEXTO_ING
+  });
+
   /* Dos eventos. No son plan: no suman horas ni se cumplen a medias, y se ven
      distintos a propósito. Los avisos van desarmados para que una tanda de
      capturas no dispare notificaciones de verdad. */
@@ -345,6 +407,14 @@ function run(win, app) {
           ['estudio-papel-ancha', irPapel + 'H.S.ui.papelVista="ver";H.S.ui.imgAncho="ancha";' +
            'H.S.ui.imgVer=(H.S.data.reviews.find(r=>r.title.indexOf("Clase 5")===0)' +
            '||{imagenes:[]}).imagenes[0].id;H.S.setView("estudio")'],
+          // Formulas y letras griegas, que es media carrera de ingenieria.
+          ['estudio-formulas',
+           'H.S.ui.estGrupo=(H.S.data.spotGroups.find(g=>g.name.indexOf("Ingenieria")===0)||{}).id;' +
+           'H.S.ui.spotId=(H.S.data.spots.find(s=>s.name.indexOf("Mecanica")===0)||{}).id;' +
+           'H.S.ui.estCarpeta=(H.S.data.noteTypes.find(t=>t.name.indexOf("Esfuerzo")===0)||{}).id;' +
+           'H.S.ui.estPapel=(H.S.data.reviews.find(r=>r.title.indexOf("Esfuerzo normal")===0)||{}).id;' +
+           'H.S.ui.papelDraft=null;H.S.ui.papelVista="ver";H.S.ui.imgVer=null;' +
+           'H.S.setView("estudio")'],
           // La puerta de vuelta: los papeles que se quedaron sin tema.
           ['estudio-sueltos',
            'H.S.ui.spotId=null;H.S.ui.estCarpeta=null;H.S.ui.estPapel=null;' +

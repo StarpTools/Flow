@@ -491,7 +491,19 @@
     { sep: true },
     { marca: '!', cierre: '!', etiqueta: '⚠', titulo: 'Caja de alerta  !texto!' },
     { marca: '>', cierre: '<', etiqueta: '★', titulo: 'Caja de nota importante  >texto<' },
-    { marca: '#', cierre: '#', etiqueta: '#', titulo: 'Etiqueta  #varias palabras#' }
+    { marca: '#', cierre: '#', etiqueta: '#', titulo: 'Etiqueta  #varias palabras#' },
+    { sep: true },
+    { marca: '$', cierre: '$', etiqueta: 'ƒx',
+      titulo: 'Fórmula en línea  $σ_max$' }
+  ];
+
+  /* La paleta. Escribir \\sigma es lo rápido cuando te sabes el nombre; esto es
+     para cuando no te lo sabes, que con ∠ o ∂ pasa siempre. Van los que salen
+     de verdad en ingeniería, no el alfabeto griego entero: una paleta de 50
+     símbolos se lee más despacio que buscar el nombre. */
+  const PALETA = [
+    'σ', 'τ', 'ε', 'δ', 'θ', 'φ', 'ρ', 'μ', 'ω', 'α', 'β', 'γ', 'λ', 'π',
+    'Δ', 'Σ', 'Ω', 'Φ', '±', '×', '·', '≤', '≥', '≈', '≠', '°', '√', '∫', '∞', '→'
   ];
 
   const PREFIJOS = [
@@ -515,19 +527,34 @@
         '" title="' + H.esc(p.titulo) + '">' + H.esc(p.etiqueta) + '</button>';
     }).join('');
 
+    const paleta = S.ui.simbolos
+      ? '<div class="md-paleta">' +
+        PALETA.map(function (c) {
+          return '<button class="md-btn" data-act="simbolo" data-txt="' + c +
+            '">' + c + '</button>';
+        }).join('') +
+        '<span class="micro" style="margin-left:6px">' +
+        'O escríbelos por su nombre: \sigma, \tau, \Delta…</span></div>'
+      : '';
+
     return (
       '<div class="md-barra">' +
       (escribiendo
         ? marcas + '<span class="md-sep"></span>' + prefijos +
           '<span class="md-sep"></span>' +
           '<button class="md-btn" data-act="prefijo" data-prefijo="---" ' +
-          'title="Línea divisoria  ---">—</button>'
+          'title="Línea divisoria  ---">—</button>' +
+          '<button class="md-btn" data-act="formulaBloque" ' +
+          'title="Fórmula en bloque, con fracciones apiladas">$$</button>' +
+          '<button class="md-btn' + (S.ui.simbolos ? ' on' : '') + '" data-act="paleta" ' +
+          'title="Símbolos">Ω</button>'
         : '<span class="micro">Así queda el papel</span>') +
       '<div class="seg" style="margin-left:auto">' +
       '<button class="seg-btn' + (escribiendo ? ' on' : '') +
       '" data-act="papelVista" data-modo="escribir">Escribir</button>' +
       '<button class="seg-btn' + (escribiendo ? '' : ' on') +
-      '" data-act="papelVista" data-modo="ver">Ver</button></div></div>'
+      '" data-act="papelVista" data-modo="ver">Ver</button></div></div>' +
+      paleta
     );
   }
 
@@ -948,7 +975,19 @@
 
       [titulo, cuerpo].forEach(function (n) {
         if (!n) return;
-        n.addEventListener('input', function () { leerDelDom(S); programarGuardado(S); });
+        n.addEventListener('input', function () {
+          /* \\sigma se convierte en σ aquí, al teclear, y no al pintar: así lo
+             que se guarda en el archivo es una σ de verdad. Guardar el nombre
+             en crudo dejaría la búsqueda sin encontrarla y la nota ilegible
+             fuera de Flow. */
+          const sub = H.notas.sustituirSimbolo(n.value, n.selectionStart);
+          if (sub) {
+            n.value = sub.texto;
+            n.setSelectionRange(sub.cursor, sub.cursor);
+          }
+          leerDelDom(S);
+          programarGuardado(S);
+        });
         // Cambiar de pestaña o de ventana quita el foco antes que nada más:
         // guardar aquí es lo que hace que no se pierda un párrafo por salir.
         n.addEventListener('blur', function () { guardar(S); });
@@ -1117,6 +1156,31 @@
           } else {
             aplicar(S, function (t, a, b) { return H.notas.prefijar(t, a, b, ds.prefijo); });
           }
+          break;
+        case 'paleta':
+          S.ui.simbolos = !S.ui.simbolos;
+          // Sin soltar el freno el repintado no llega y la bandeja no se abre.
+          S.pausarRender = false;
+          repintar(S);
+          break;
+        case 'simbolo':
+          aplicar(S, function (t, a, b) {
+            const r = H.notas.insertar(t, a, b, ds.txt);
+            return { texto: r.texto, desde: r.cursor, hasta: r.cursor };
+          });
+          break;
+        case 'formulaBloque':
+          /* En bloque y no en línea porque es donde las fracciones se apilan.
+             Se abre en su propio renglón: un $$ pegado al párrafo anterior no
+             es un bloque, es una línea más. */
+          aplicar(S, function (t, a, b) {
+            const dentro = t.slice(a, b) || '';
+            const antes = t.slice(0, a);
+            const salto = antes && !antes.endsWith('\n') ? '\n' : '';
+            const cuerpoF = salto + '$$\n' + dentro + '\n$$\n';
+            const cursor = a + salto.length + 3 + dentro.length;
+            return { texto: antes + cuerpoF + t.slice(b), desde: cursor, hasta: cursor };
+          });
           break;
         case 'borrarPapel': {
           const r = S.data.reviews.find(function (x) { return x.id === ds.id; });

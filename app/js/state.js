@@ -31,6 +31,8 @@
       papelDraft: null,
       // 'escribir' | 'ver'
       papelVista: 'escribir',
+      // Bandeja de símbolos abierta bajo la barra de marcas.
+      simbolos: false,
       // Imagen que se está viendo en el panel de la derecha.
       imgVer: null,
       /* Cuánto sitio le das al panel de imágenes: 'normal' o 'ancha'. Y si la

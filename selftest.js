@@ -746,6 +746,67 @@ const SCRIPT = `(async () => {
     ok('responder en Hoy adelanta el calendario de esa tarjeta',
        quedan.length === 0, 'quedan ' + quedan.length);
 
+    /* --- Simbolos y formulas en el editor ---------------------------------
+       Lo puro (la tabla, el renderizador) vive en prueba-notas.js. Aqui se
+       comprueba el cableado: que al teclear el nombre en el textarea salga la
+       letra, y que la formula llegue pintada a la vista de lectura. */
+    S.ui.estPapel = papel.id;
+    S.ui.papelDraft = null;
+    S.ui.papelVista = 'escribir';
+    S.pausarRender = false;
+    S.setView('estudio');
+    await wait(260);
+
+    const NL = String.fromCharCode(10);
+    const taF = document.getElementById('papelCuerpo');
+    ok('el editor esta abierto para escribir', !!taF);
+
+    taF.value = 'El esfuerzo \\\\sigma';
+    taF.setSelectionRange(taF.value.length, taF.value.length);
+    // El espacio es lo que cierra el nombre: se teclea a mano y se avisa.
+    taF.value = taF.value + ' ';
+    taF.setSelectionRange(taF.value.length, taF.value.length);
+    taF.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(220);
+    ok('teclear el nombre convierte la letra en el propio textarea',
+       taF.value.indexOf('\u03c3') !== -1 && taF.value.indexOf('\\\\sigma') === -1, taF.value);
+
+    document.querySelector('#view [data-act=\"paleta\"]').click();
+    await wait(220);
+    const paletaSim = document.querySelector('#view .md-paleta');
+    ok('la paleta se abre con sus simbolos',
+       !!paletaSim && paletaSim.querySelectorAll('[data-act=\"simbolo\"]').length > 20);
+
+    const botonTau = Array.from(paletaSim.querySelectorAll('[data-act=\"simbolo\"]'))
+      .filter((b) => b.getAttribute('data-txt') === '\u03c4')[0];
+    ok('y una de ellas es la tau', !!botonTau);
+    const antesTau = document.getElementById('papelCuerpo').value;
+    botonTau.click();
+    await wait(220);
+    ok('pulsarla la mete en el texto',
+       document.getElementById('papelCuerpo').value.length === antesTau.length + 1 &&
+       document.getElementById('papelCuerpo').value.indexOf('\u03c4') !== -1);
+
+    // Y la formula, de punta a punta: se escribe, se guarda y se lee pintada.
+    const taBloque = document.getElementById('papelCuerpo');
+    taBloque.value = 'Teoria del esfuerzo.' + \NL + \NL + '$$' + \NL +
+      '\u03c3 = M*c/I' + \NL + '$$';
+    taBloque.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(220);
+    document.querySelector('#view [data-act=\"papelVista\"][data-modo=\"ver\"]').click();
+    await wait(320);
+    ok('la formula se lee como formula, no como texto',
+       !!document.querySelector('#view .nota-formula'));
+    ok('y la fraccion sale apilada, con numerador y denominador',
+       !!document.querySelector('#view .frac-num') &&
+       !!document.querySelector('#view .frac-den'));
+
+    S.ui.simbolos = false;
+    S.ui.papelVista = 'escribir';
+    S.ui.estPapel = null;
+    S.ui.papelDraft = null;
+    S.pausarRender = false;
+
     // --- Limpieza del bloque -----------------------------------------------
     await S.mutate('review:remove', { id: papel.id });
     ok('borrar el papel se lleva sus tarjetas',

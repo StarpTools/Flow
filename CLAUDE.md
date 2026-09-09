@@ -54,6 +54,29 @@ error), el bloqueo de instancia única, y `--oculto` con
 `setLoginItemSettings` — solo en la app empaquetada: en desarrollo registraría
 electron.exe.
 
+## Simbolos y formulas
+
+Se escriben por su nombre de LaTeX y se convierten AL TECLEAR, en el propio
+textarea: \sigma + espacio queda como una σ de verdad en el archivo. Guardar
+el nombre en crudo romperia la busqueda, la copia fuera de Flow y la pregunta
+de una tarjeta. La tabla y el renderizador viven en `notas.js` (puros, con
+pruebas), asi que los heredan el papel, la respuesta de una tarjeta en Hoy y la
+exportacion sin trabajo extra.
+
+    $ORMULA$        en linea: simbolos, subindices, superindices
+    $$ ... $$     en bloque: ademas fracciones apiladas y raices
+
+El bloque tambien se abre con $$ en su linea y se cierra con otro $$ mas abajo.
+
+`_` y `^` funcionan SOLO dentro de una formula. Fuera son texto: si el
+subindice valiera en cualquier sitio, `flow_data.json` o `user_name` saldrian
+con media palabra encogida y debajo de la linea, en silencio.
+
+Los limites, a proposito: la fraccion se apila solo en bloque (en linea
+levantaria el renglon del parrafo), y la raiz cubre un nivel de parentesis
+dentro. Mas que eso pedia una libreria de LaTeX, y eso es 1,2 MB de fuentes y
+la primera dependencia de la app.
+
 ## Repetir en el plan
 
 Agendar repite sobre un TRAMO, no sobre el mes: del día que abres al que diga
@@ -83,13 +106,14 @@ Key routing rules:
 
 ## Pruebas
 
-Cuatro suites, 404 comprobaciones en total:
+Cuatro suites, 440 comprobaciones en total:
 
-- `HQ_SELFTEST=1 npm start` — app completa (174) · `HQ_SELFTEST=2` (185, incluye
+- `HQ_SELFTEST=1 npm start` — app completa (181) · `HQ_SELFTEST=2` (192, incluye
   verificaciones contra el reloj real). Escriben en un almacén temporal aparte,
   nunca en los datos reales del usuario.
 - `node tools/prueba-repaso.js` — algoritmo SM-2 (30), sin interfaz.
-- `node tools/prueba-notas.js` — formato de las notas y sus marcas (121), sin interfaz.
+- `node tools/prueba-notas.js` — formato de las notas, sus marcas y las
+  fórmulas (150), sin interfaz.
 - `node tools/prueba-datos.js` — resistencia del archivo de datos (79).
 
 El almacén de pruebas (`%TEMP%/flow-pruebas`) **persiste entre corridas** y el

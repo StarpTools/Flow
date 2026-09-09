@@ -50,6 +50,135 @@
       .replace(/"/g, '&quot;');
   };
 
+  /* --- Simbolos y formulas -------------------------------------------------
+
+     Estudiar ingenieria es escribir σ, τ, ε, Δ y ∑ todo el rato, y
+     ninguna esta en el teclado. Se escriben por su nombre de LaTeX (\sigma)
+     porque es el que ya te sabes de clase y el que sale en cualquier apunte.
+
+     La sustitucion ocurre AL TECLEAR, no al pintar: asi el archivo guarda una
+     σ de verdad. Si guardara el nombre en crudo, buscar σ no encontraria
+     nada, copiar la nota fuera saldria ilegible, y la pregunta de una tarjeta
+     dependeria de que algo la interprete para poder leerse. */
+  N.SIMBOLOS = {
+    alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ',
+    epsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ',
+    iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν',
+    xi: 'ξ', pi: 'π', rho: 'ρ', sigma: 'σ', tau: 'τ',
+    upsilon: 'υ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
+    Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ',
+    Xi: 'Ξ', Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ',
+    Omega: 'Ω',
+    pm: '±', mp: '∓', times: '×', cdot: '·', div: '÷',
+    neq: '≠', leq: '≤', geq: '≥', approx: '≈', propto: '∝',
+    infty: '∞', partial: '∂', nabla: '∇', int: '∫',
+    iint: '∬', sum: '∑', prod: '∏', sqrt: '√', deg: '°',
+    perp: '⊥', parallel: '∥', angle: '∠', to: '→',
+    implies: '⇒', ldots: '…', prime: '′'
+  };
+
+  // Un nombre que no esta en la tabla se queda como estaba: tragarse a medias
+  // algo que se escribio a proposito es peor que no hacer nada.
+  function ponerSimbolos(t) {
+    return String(t).replace(/\\([A-Za-z]+)/g, function (todo, nombre) {
+      return Object.prototype.hasOwnProperty.call(N.SIMBOLOS, nombre)
+        ? N.SIMBOLOS[nombre]
+        : todo;
+    });
+  }
+
+  /* Sustitucion mientras escribes. La dispara el caracter que CIERRA el
+     nombre (un espacio, un igual, un parentesis, un salto de linea), nunca
+     antes: convirtiendo letra a letra, el nombre pasaria por todos sus
+     prefijos y no habria forma de llegar al final.
+
+     Devuelve null cuando no hay nada que cambiar, para que quien llama no
+     reescriba el textarea sin motivo: reescribirlo mueve el cursor. */
+  N.sustituirSimbolo = function (texto, cursor) {
+    const t = String(texto == null ? '' : texto);
+    const pos = Math.max(0, Math.min(cursor == null ? t.length : cursor, t.length));
+    const antes = t.slice(0, pos);
+
+    const m = antes.match(/\\([A-Za-z]+)([^A-Za-z])$/);
+    if (!m) return null;
+    if (!Object.prototype.hasOwnProperty.call(N.SIMBOLOS, m[1])) return null;
+
+    const simbolo = N.SIMBOLOS[m[1]];
+    const largo = m[0].length;
+    const nuevo = antes.slice(0, pos - largo) + simbolo + m[2] + t.slice(pos);
+    return { texto: nuevo, cursor: pos - largo + simbolo.length + m[2].length };
+  };
+
+  // Insertar en el cursor, o sustituir lo seleccionado. Lo usa la paleta.
+  N.insertar = function (texto, desde, hasta, cadena) {
+    const t = String(texto == null ? '' : texto);
+    const a = Math.max(0, Math.min(desde, t.length));
+    const b = Math.max(a, Math.min(hasta, t.length));
+    return { texto: t.slice(0, a) + cadena + t.slice(b), cursor: a + cadena.length };
+  };
+
+  /* Un atomo de una formula: un grupo entre parentesis o llaves, o una tirada
+     de caracteres que no son ni espacio ni operador. Es lo que hay a cada lado
+     de la barra de una fraccion. */
+  // Ojo: es una cadena, no un literal de expresion regular, asi que cada
+  // barra va doble o se la come el string antes de llegar al RegExp.
+  const ATOMO = '(\\((?:[^()]|\\([^()]*\\))*\\)|\\{(?:[^{}]|\\{[^{}]*\\})*\\}|[^\\s/=+±≤≥≈<>(){}-]+)';
+
+  function pelar(s) {
+    return /^[({][\s\S]*[)}]$/.test(s) ? s.slice(1, -1) : s;
+  }
+
+  function subYSuper(t) {
+    return t
+      .replace(/\^\{([^{}]*)\}/g, '<sup>$1</sup>')
+      .replace(/_\{([^{}]*)\}/g, '<sub>$1</sub>')
+      .replace(/\^([\p{L}\p{N}+-]+)/gu, '<sup>$1</sup>')
+      .replace(/_([\p{L}\p{N}+-]+)/gu, '<sub>$1</sub>');
+  }
+
+  function cuerpo(t, apilar) {
+    // La raiz lleva su radicando bajo una barra, como en papel.
+    let out = t.replace(
+      /√\s*(\((?:[^()]|\([^()]*\))*\)|\{(?:[^{}]|\{[^{}]*\})*\})/g,
+      function (_, dentro) {
+        return '<span class="raiz">√<span class="raiz-cuerpo">' +
+          cuerpo(pelar(dentro), apilar) + '</span></span>';
+      });
+
+    /* Fracciones apiladas, solo en bloque. En linea una fraccion de dos pisos
+       descoloca el renglon entero del parrafo, asi que ahi la barra se queda
+       como barra: para eso esta el bloque. */
+    if (apilar) {
+      out = out.replace(new RegExp(ATOMO + '\\s*/\\s*' + ATOMO, 'g'),
+        function (_, arriba, abajo) {
+          return '<span class="frac"><span class="frac-num">' +
+            cuerpo(pelar(arriba), false) + '</span><span class="frac-den">' +
+            cuerpo(pelar(abajo), false) + '</span></span>';
+        });
+    }
+
+    return subYSuper(out);
+  }
+
+  /* De formula a HTML. El segundo argumento distingue el bloque de la formula
+     en linea: las dos entienden simbolos, subindices y raices; solo el bloque
+     apila fracciones. */
+  N.mates = function (src, apilar, yaEscapado) {
+    /* Se escapa lo primero de todo y a partir de ahi se trabaja siempre sobre
+       texto escapado. Al reves se escaparian los <span> recien puestos y la
+       formula saldria en crudo. `yaEscapado` es para enLinea, que recibe el
+       texto escapado de antes: volver a escaparlo dejaria &amp;lt; a la vista. */
+    let t = String(src == null ? '' : src).trim();
+    if (!yaEscapado) t = N.escapar(t);
+
+    // Operadores que si se pueden teclear, escritos como se teclean. Los de
+    // comparacion ya vienen escapados, de ahi el &lt;.
+    t = t.replace(/&lt;=/g, '≤').replace(/&gt;=/g, '≥').replace(/!=/g, '≠')
+         .replace(/\+-/g, '±').replace(/\*/g, '·');
+
+    return cuerpo(ponerSimbolos(t), !!apilar);
+  };
+
   /* Marcas de dentro de una línea. Se aplica sobre texto YA escapado.
 
      El orden importa. La triple va primero porque si pasara antes la doble,
@@ -67,7 +196,17 @@
       return '<<' + (apartadas.length - 1) + '>>';
     });
 
-    return conMarcadores
+    /* Las formulas se apartan por lo mismo que las imagenes, y ademas por una
+       razon suya: dentro de una formula un * es multiplicar, no cursiva, y un
+       _ es un subindice, no medio subrayado. Si pasaran por las marcas de
+       texto saldrian rotas justo las notas que mas cuesta escribir. */
+    const formulas = [];
+    const conFormulas = conMarcadores.replace(/\$([^$\n]+)\$/g, function (_, src) {
+      formulas.push(N.mates(src, false, true));
+      return '<<f' + (formulas.length - 1) + '>>';
+    });
+
+    return conFormulas
       .replace(/\*\*\*(?=\S)([\s\S]*?\S)\*\*\*/g, '<strong><em>$1</em></strong>')
       .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(?=\S)([^*]*?\S|\S)\*/g, '<em>$1</em>')
@@ -80,6 +219,9 @@
       /* Se devuelven al final. El marcador es <<n>>, y no puede colisionar con
          nada escrito: enLinea trabaja sobre texto YA escapado, donde un "<"
          suelto es imposible. */
+      .replace(/<<f(\d+)>>/g, function (_, i) {
+        return '<span class="mate">' + formulas[Number(i)] + '</span>';
+      })
       .replace(/<<(\d+)>>/g, function (_, i) {
         const n = apartadas[Number(i)];
         return '<span class="nota-img" data-act="verImagen" data-nombre="' +
@@ -216,9 +358,27 @@
 
     // Caja cerrada en curso: qué marca la cierra, mientras siga abierta.
     let cerrandoCon = null;
+    // Bloque de formula abierto: sus lineas, hasta que llegue el $$ de cierre.
+    let formula = null;
+
+    function cerrarFormula() {
+      out.push('<div class="nota-formula">' +
+        formula.map(function (l) { return N.mates(l, true); }).join('<br>') +
+        '</div>');
+      formula = null;
+    }
 
     for (const cruda of lineas) {
       const linea = cruda.trim();
+
+      /* Dentro de un bloque de formula no manda ninguna otra marca: una linea
+         en blanco no lo cierra y un guion no es una lista. Solo lo cierra el
+         $$, para que una derivacion de varios pasos se escriba de un tiron. */
+      if (formula) {
+        if (linea === '$$') cerrarFormula();
+        else if (linea) formula.push(linea);
+        continue;
+      }
 
       if (!linea) {
         cerrandoCon = null;
@@ -233,6 +393,22 @@
         const dentro = cierra ? linea.slice(0, -1) : linea;
         out.push('<br>' + N.enLinea(N.escapar(dentro)));
         if (cierra) { cerrandoCon = null; cerrarCaja(); }
+        continue;
+      }
+
+      /* Formula de bloque, en sus dos formas: entera en una linea, o abierta
+         con $$ y cerrada con otro $$ mas abajo. Va antes que las cajas porque
+         dentro de una formula el ! y el > son operadores, no marcas. */
+      const formulaSuelta = linea.match(/^\$\$\s*(.+?)\s*\$\$$/);
+      if (formulaSuelta) {
+        cerrarBloques();
+        formula = [formulaSuelta[1]];
+        cerrarFormula();
+        continue;
+      }
+      if (linea === '$$') {
+        cerrarBloques();
+        formula = [];
         continue;
       }
 
@@ -307,6 +483,7 @@
       parrafo.push(N.enLinea(N.escapar(linea)));
     }
 
+    if (formula) cerrarFormula();
     cerrarBloques();
     return out.join('');
   };
@@ -355,7 +532,9 @@
           // El nombre de la imagen se queda, los corchetes no: en un extracto
           // "[[esquema]]" es ruido y "esquema" dice algo.
           .replace(/\[\[([^\]\n]+)\]\]/g, '$1')
-          .replace(/\*\*\*|\*\*|\*|__|~~/g, '');
+          .replace(/\*\*\*|\*\*|\*|__|~~/g, '')
+          // Las marcas de formula no dicen nada en un extracto; lo de dentro si.
+          .replace(/\${1,2}/g, '');
       })
       .filter(function (l) { return l !== ''; })
       .join(' ')

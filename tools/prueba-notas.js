@@ -470,7 +470,107 @@ ok('null tiene cero palabras', N.palabras(null) === 0);
   const r = N.prefijar('a\nb', 0, 3, '- ');
   ok('con selección se mantiene el bloque seleccionado',
      r.desde === 0 && r.hasta === r.texto.length, r.desde + '-' + r.hasta);
+}/* --- Simbolos y formulas ---------------------------------------------------
+
+   Estudiar ingenieria es escribir sigma, tau y Delta todo el rato, y ninguna
+   esta en el teclado. Se prueba aparte y sin interfaz por lo mismo que el
+   resto del formato: un fallo aqui no se ve al escribir, se ve al releer. */
+{
+  const BAR = String.fromCharCode(92);
+  const D = String.fromCharCode(36);
+  const NL = String.fromCharCode(10);
+
+  // --- Sustitucion al teclear ---
+  const r1 = N.sustituirSimbolo('esfuerzo ' + BAR + 'sigma ', 16);
+  ok('\sigma y un espacio se convierten en sigma',
+     r1 && r1.texto === 'esfuerzo σ ', r1 ? r1.texto : 'null');
+  ok('y el cursor queda detras del simbolo', r1 && r1.cursor === 11, r1 ? r1.cursor : '-');
+
+  ok('a medio escribir no se toca nada',
+     N.sustituirSimbolo(BAR + 'sig', 4) === null);
+
+  ok('un nombre que no existe se queda como esta',
+     N.sustituirSimbolo(BAR + 'noexiste ', 10) === null);
+
+  const r2 = N.sustituirSimbolo(BAR + 'Delta=', 7);
+  ok('las mayusculas son otro simbolo', r2 && r2.texto === 'Δ=', r2 ? r2.texto : 'null');
+
+  const r3 = N.sustituirSimbolo(BAR + 'sigma_max', 7);
+  ok('el guion bajo tambien cierra el nombre',
+     r3 && r3.texto === 'σ_max', r3 ? r3.texto : 'null');
+
+  const r4 = N.sustituirSimbolo('x' + BAR + 'tau)y', 6);
+  ok('y un parentesis, sin comerse lo que venia detras',
+     r4 && r4.texto === 'xτ)y', r4 ? r4.texto : 'null');
+
+  // --- Formula en linea ---
+  const enLinea = N.aHtml('El ' + D + 'sigma_max' + D + ' manda');
+  ok('la formula en linea sale en su span',
+     enLinea.indexOf('<span class="mate">') !== -1, enLinea);
+  ok('con el subindice puesto', enLinea.indexOf('<sub>max</sub>') !== -1);
+  ok('en linea la fraccion NO se apila, seria un renglon de dos pisos',
+     N.aHtml('vale ' + D + 'P/A' + D).indexOf('class="frac"') === -1);
+
+  ok('un dolar suelto sigue siendo un dolar',
+     N.aHtml('cuesta 20' + D + ' y ya').indexOf('mate') === -1);
+
+  ok('dentro de una formula el asterisco multiplica, no pone cursiva',
+     N.aHtml(D + 'M*c' + D).indexOf('<em>') === -1 &&
+     N.aHtml(D + 'M*c' + D).indexOf('·') !== -1);
+
+  ok('y el guion bajo es subindice, no medio subrayado',
+     N.aHtml(D + 'A_s' + D).indexOf('<sub>s</sub>') !== -1);
+
+  // --- Bloque ---
+  const bloque = N.aHtml(D + D + ' sigma = M*c/I ' + D + D);
+  ok('el bloque de formula tiene su propio div',
+     bloque.indexOf('<div class="nota-formula">') === 0, bloque.slice(0, 40));
+  ok('y ahi si se apila la fraccion',
+     bloque.indexOf('frac-num') !== -1 && bloque.indexOf('frac-den') !== -1);
+
+  const varias = N.aHtml(D + D + NL + 'a = b/c' + NL + 'd = e/f' + NL + D + D);
+  ok('un bloque abarca varias lineas', (varias.match(/frac-num/g) || []).length === 2);
+  ok('y es un solo bloque, no dos', (varias.match(/nota-formula/g) || []).length === 1);
+
+  ok('una linea en blanco no cierra el bloque',
+     N.aHtml(D + D + NL + 'a = b/c' + NL + NL + 'd = e/f' + NL + D + D)
+       .indexOf('<p>') === -1);
+
+  ok('un bloque sin cerrar se pinta igual, no se traga el texto',
+     N.aHtml(D + D + NL + 'sigma = P/A').indexOf('frac-num') !== -1);
+
+  // --- Lo que hace legible una formula de verdad ---
+  ok('los parentesis agrupan el numerador y el denominador',
+     N.mates('(P*L)/(A*E)', true).indexOf('>P·L<') !== -1);
+
+  ok('la raiz tapa su radicando con una barra',
+     N.mates('√(a + b)', true).indexOf('raiz-cuerpo') !== -1);
+
+  ok('y dentro de la raiz sigue habiendo fracciones',
+     N.mates('√((a/2) + b)', true).indexOf('frac-num') !== -1);
+
+  ok('menor o igual se escribe tal cual y sale bien',
+     N.mates('sigma <= 250', false).indexOf('≤') !== -1);
+
+  ok('un superindice no necesita llaves', N.mates('mm^2', false) === 'mm<sup>2</sup>');
+  ok('pero puede llevarlas para varios caracteres',
+     N.mates('x^{n+1}', false) === 'x<sup>n+1</sup>');
+
+  // --- Lo que NO puede pasar ---
+  ok('una formula no puede colar HTML',
+     N.aHtml(D + '<img src=x onerror=alert(1)>' + D).indexOf('<img') === -1);
+
+  ok('el guion bajo fuera de una formula sigue siendo un guion bajo',
+     N.aHtml('el archivo flow_data.json').indexOf('<sub>') === -1);
+
+  ok('y el subrayado de siempre no se rompe',
+     N.aHtml('__subrayado__').indexOf('<u>subrayado</u>') !== -1);
+
+  ok('el extracto ensena la formula sin las marcas',
+     N.aTextoPlano('El ' + D + 'sigma_max' + D + ' manda') === 'El sigma_max manda');
 }
+
+
 
 console.log('\n===== ' + (fallan === 0
   ? 'TODO OK (' + pasan + ' comprobaciones)'

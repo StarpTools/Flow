@@ -1194,6 +1194,99 @@ th.r {
   flex-shrink: 0;
 }
 
+/* Formulas -----------------------------------------------------------------
+
+   Sin dependencias: subindices, superindices, fracciones apiladas y raices
+   salen de flexbox y un borde. Una libreria de LaTeX daria mas, pero seria la
+   primera dependencia de la app y 1,2 MB de fuentes en el instalador. */
+
+.mate,
+.nota-formula {
+  font-family: 'Cambria Math', 'Latin Modern Math', Georgia, serif;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* En linea la formula tiene que caber en el renglon sin separarlo del de
+   arriba: por eso aqui la fraccion NO se apila, se queda con su barra. */
+.mate {
+  font-size: 1.02em;
+}
+
+.nota-formula {
+  margin: 14px 0;
+  padding: 12px 14px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 2.1;
+  background: var(--bg-subtle);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-hair);
+  overflow-x: auto;
+}
+
+/* La fraccion: numerador arriba, denominador debajo y una raya en medio.
+   inline-flex en columna para que siga siendo parte del renglon. */
+.frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 3px;
+  line-height: 1.25;
+}
+
+.frac-num {
+  padding: 0 5px;
+  border-bottom: 1px solid currentColor;
+}
+
+.frac-den {
+  padding: 0 5px;
+}
+
+/* La raiz: el signo y, encima del radicando, la barra que dice donde acaba.
+   Sin esa barra no se ve que la suma entera va dentro. */
+.raiz {
+  display: inline-flex;
+  align-items: flex-start;
+  vertical-align: middle;
+}
+
+.raiz-cuerpo {
+  border-top: 1px solid currentColor;
+  padding: 1px 3px 0 2px;
+  margin-left: 1px;
+}
+
+/* Los subindices no pueden encoger tanto que dejen de leerse: sigma_max con
+   el max ilegible no dice mas que sigma a secas. */
+.nota-cuerpo sub,
+.nota-cuerpo sup,
+.mate sub,
+.mate sup,
+.nota-formula sub,
+.nota-formula sup {
+  font-size: 0.72em;
+  font-style: normal;
+}
+
+/* La bandeja de simbolos, bajo la barra de marcas. */
+.md-paleta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  padding: 7px 8px;
+  border-top: 1px solid var(--border-hair);
+  background: var(--bg-subtle);
+}
+
+.md-paleta .md-btn {
+  font-size: 14px;
+  min-width: 28px;
+}
+
 /* Heatmap ------------------------------------------------------------------ */
 
 .heat {
