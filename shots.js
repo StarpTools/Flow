@@ -238,6 +238,26 @@ const SEED = `(async () => {
   for (const [c, title, text] of otros) {
     await S.mutate('review:add', { spotId: git.id, typeId: carp(c), title, text });
   }
+  /* Un papel sin tema: el que se quedó solo al borrarse el tema que lo tenía.
+     Va en las capturas a propósito, porque es el caso que hay que ver — los
+     apuntes siguen ahí y la oficina tiene una puerta para devolverlos. */
+  await S.mutate('review:add', {
+    spotId: null, typeId: null,
+    title: 'Apuntes de la clase del martes',
+    text: 'Se quedó sin tema al reorganizar los estantes. El texto sigue entero.'
+  });
+
+  /* Dos eventos. No son plan: no suman horas ni se cumplen a medias, y se ven
+     distintos a propósito. Los avisos van desarmados para que una tanda de
+     capturas no dispare notificaciones de verdad. */
+  await S.mutate('event:add', {
+    title: 'Reunión con el cliente', date: key(), time: '16:30', avisarMin: -1
+  });
+  await S.mutate('event:add', {
+    title: 'Entrega del informe', date: key(addDays(new Date(), 3)),
+    time: '', avisarMin: -1, note: 'Versión final'
+  });
+
   // Una tarjeta suelta en otro papel, para que Hoy tenga cola de verdad.
   const diez = S.data.reviews.find((r) => r.title.indexOf('Los diez comandos') === 0);
   await S.mutate('card:add', {
@@ -325,7 +345,12 @@ function run(win, app) {
           ['estudio-papel-ancha', irPapel + 'H.S.ui.papelVista="ver";H.S.ui.imgAncho="ancha";' +
            'H.S.ui.imgVer=(H.S.data.reviews.find(r=>r.title.indexOf("Clase 5")===0)' +
            '||{imagenes:[]}).imagenes[0].id;H.S.setView("estudio")'],
-          ['life', 'H.S.ui.estPapel=null;H.S.ui.imgAncho="normal";H.S.setView("life")'],
+          // La puerta de vuelta: los papeles que se quedaron sin tema.
+          ['estudio-sueltos',
+           'H.S.ui.spotId=null;H.S.ui.estCarpeta=null;H.S.ui.estPapel=null;' +
+           'H.S.ui.estSueltos=true;H.S.setView("estudio")'],
+          ['life', 'H.S.ui.estPapel=null;H.S.ui.imgAncho="normal";' +
+           'H.S.ui.estSueltos=false;H.S.setView("life")'],
           // Las estrategias quedan bajo el pliegue: hay que bajar para verlas.
           ['life-estrategias',
            'H.S.setView("life");document.querySelector(".content").scrollTop=99999']

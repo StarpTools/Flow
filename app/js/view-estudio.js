@@ -75,6 +75,31 @@
     return S.data.reviews.find(function (r) { return r.id === S.ui.estPapel; }) || null;
   }
 
+  /* Papeles sueltos: los que se quedaron sin tema.
+
+     Borrar un tema no se lleva sus papeles por delante — los deja sin tema, a
+     propósito, porque dentro puede haber meses de apuntes. Pero la oficina se
+     recorre entrando por un tema, así que sin una pantalla que los recoja
+     serían invisibles: siguen en el archivo y no hay forma de llegar a ellos.
+     Es exactamente lo que le pasó a unos apuntes de git al reorganizar. */
+
+  function papelesSueltos(S) {
+    return S.data.reviews.filter(function (r) { return !r.spotId; });
+  }
+
+  function carpetasSueltas(S) {
+    return (S.data.noteTypes || []).filter(function (t) { return !t.spotId; });
+  }
+
+  // Un tema sin estante se cae de la lista igual que un papel sin tema: la
+  // lista de temas es siempre la de UN estante.
+  function temasSueltos(S) {
+    // Sin ningún estante, la lista de temas es justo la de los que no tienen:
+    // ya se ven, y sacarlos también aquí sería enseñarlos dos veces.
+    if (!(S.data.spotGroups || []).length) return [];
+    return S.data.spots.filter(function (t) { return !t.groupId && !t.archived; });
+  }
+
   // Todas las tarjetas del tema, con el papel del que cuelgan.
   function tarjetasDelTema(S, temaId) {
     const out = [];
@@ -97,6 +122,16 @@
 
   function migas(S) {
     const tema = temaAbierto(S);
+
+    if (S.ui.estSueltos) {
+      return (
+        '<div class="migas">' +
+        '<button class="miga" data-act="irTemas">Estudio</button>' +
+        '<span class="miga-sep">›</span>' +
+        '<span class="miga-actual">Papeles sueltos</span></div>'
+      );
+    }
+
     if (!tema) return '';
 
     const carpeta = S.ui.estCarpeta === 'sin'
@@ -135,7 +170,8 @@
         '<strong>Este estante está vacío</strong>' +
         'Un tema es una materia o un curso: "Git y control de versiones", ' +
         '"Anatomía I". Dentro van sus carpetas, y dentro de cada carpeta los ' +
-        'papeles que escribes.</div></div>'
+        'papeles que escribes.</div></div>' +
+        cajonSueltos(S)
       );
     }
 
@@ -158,7 +194,130 @@
         ' · ' + H.plural(tjs.length, 'tarjeta') +
         '</div></div>'
       );
-    }).join('') + '</div>';
+    }).join('') + cajonSueltos(S) + '</div>';
+  }
+
+  /* El cajón de los sueltos sale junto a los temas, pero NO pertenece a este
+     estante: un papel sin tema tampoco tiene estante. Por eso aparece siempre
+     que haya algo dentro, mires el estante que mires — es la puerta de vuelta
+     de lo que se quedó fuera, y esconderla detrás del estante correcto sería
+     esconderla del todo. */
+  function cajonSueltos(S) {
+    const n = papelesSueltos(S).length;
+    const c = carpetasSueltas(S).length;
+    const tm = temasSueltos(S).length;
+    if (!n && !c && !tm) return '';
+
+    return (
+      '<div class="cajon sueltos" data-act="abrirSueltos">' +
+      '<div class="row" style="align-items:baseline;gap:10px">' +
+      '<div class="grow cajon-nombre">Papeles sueltos</div>' +
+      '</div>' +
+      '<div class="micro" style="margin-top:6px">' +
+      [n ? H.plural(n, 'papel', 'papeles') + ' sin tema' : '',
+       tm ? H.plural(tm, 'tema') + ' sin estante' : '',
+       c ? H.plural(c, 'carpeta') + ' sin tema' : ''
+      ].filter(Boolean).join(' · ') +
+      '</div>' +
+      '<div class="micro" style="margin-top:3px">' +
+      'Se quedaron aquí al borrarse el tema que los contenía.' +
+      '</div></div>'
+    );
+  }
+
+  // --- La pantalla de los sueltos: colocar cada papel en un tema -------------
+
+  function nivelSueltos(S) {
+    const papeles = papelesSueltos(S).slice().sort(function (a, b) {
+      return (b.updatedAt || b.createdAt || '') < (a.updatedAt || a.createdAt || '') ? -1 : 1;
+    });
+
+    // Todos los temas de todos los estantes: el papel no tiene estante todavía,
+    // así que limitar la lista al estante abierto dejaría fuera medio destino.
+    const opciones = S.data.spots.filter(function (t) { return !t.archived; })
+      .map(function (t) {
+        const g = (S.data.spotGroups || []).find(function (x) { return x.id === t.groupId; });
+        return '<option value="' + t.id + '">' +
+          H.esc((g ? g.name + ' · ' : '') + t.name) + '</option>';
+      }).join('');
+
+    const lista = papeles.length
+      ? '<div class="nota-lista">' + papeles.map(function (r) {
+          const extracto = H.notas.resumen(r.text, 150);
+          return (
+            '<div class="nota-card suelto">' +
+            '<div class="row" style="gap:10px;align-items:baseline">' +
+            '<div class="grow nota-card-titulo">' + H.esc(r.title) + '</div>' +
+            '<span class="micro">' + H.esc(cuando(r.updatedAt || r.createdAt)) + '</span></div>' +
+            (extracto
+              ? '<div class="nota-card-extracto">' + H.esc(extracto) + '</div>'
+              : '<div class="nota-card-extracto vacio">Sin teoría</div>') +
+            '<div class="row tight" style="margin-top:8px;align-items:center;flex-wrap:wrap">' +
+            (r.imagenes.length
+              ? '<span class="tag">' + H.plural(r.imagenes.length, 'imagen', 'imágenes') + '</span>'
+              : '') +
+            (r.tarjetas.length
+              ? '<span class="tag">' + H.plural(r.tarjetas.length, 'tarjeta') + '</span>' : '') +
+            '<select data-mover="' + r.id + '" style="max-width:280px;margin-left:auto">' +
+            '<option value="">Colocar en un tema…</option>' + opciones +
+            '</select>' +
+            /* Y el que no quieres tampoco: obligar a colocarlo en un tema para
+               poder tirarlo es hacerle sitio justo a lo que sobra. */
+            '<button class="btn sm danger" data-act="borrarPapel" data-id="' + r.id +
+            '">Eliminar</button>' +
+            '</div></div>'
+          );
+        }).join('') + '</div>'
+      : '<div class="panel"><div class="empty">' +
+        '<strong>No hay papeles sueltos</strong>' +
+        'Aquí caen los papeles cuyo tema se borra, para que puedas volver a ' +
+        'colocarlos en vez de perderlos.</div></div>';
+
+    const temas = temasSueltos(S);
+    const sinEstante = temas.length
+      ? '<div class="panel" style="margin-top:14px">' +
+        '<div class="eyebrow">Temas sin estante</div>' +
+        '<div class="micro" style="margin:4px 0 10px">' +
+        'La lista de temas es siempre la de un estante, así que estos no salen ' +
+        'en ninguna. Ponles uno y vuelven con todo lo que llevan dentro.' +
+        '</div>' +
+        temas.map(function (t) {
+          return (
+            '<div class="row" style="gap:10px;align-items:center;padding:5px 0">' +
+            '<span class="grow">' + H.esc(t.name) + '</span>' +
+            '<span class="micro">' +
+            H.plural(S.data.reviews.filter(function (r) { return r.spotId === t.id; }).length,
+                     'papel', 'papeles') + '</span>' +
+            '<select data-mover-tema="' + t.id + '" style="max-width:220px">' +
+            '<option value="">Ponerlo en un estante…</option>' +
+            (S.data.spotGroups || []).map(function (g) {
+              return '<option value="' + g.id + '">' + H.esc(g.name) + '</option>';
+            }).join('') +
+            '</select></div>'
+          );
+        }).join('') + '</div>'
+      : '';
+
+    const sinTema = carpetasSueltas(S);
+    const carpetas = sinTema.length
+      ? '<div class="panel" style="margin-top:14px">' +
+        '<div class="eyebrow">Carpetas sin tema</div>' +
+        '<div class="micro" style="margin:4px 0 10px">' +
+        'Sobraron de una organización anterior. Borrarlas no borra ningún papel.' +
+        '</div>' +
+        sinTema.map(function (t) {
+          const usa = papelesSueltos(S).filter(function (r) { return r.typeId === t.id; }).length;
+          return (
+            '<div class="row" style="gap:10px;align-items:center;padding:5px 0">' +
+            '<span class="grow">' + H.esc(t.name) + '</span>' +
+            '<span class="micro">' + (usa ? H.plural(usa, 'papel', 'papeles') : 'vacía') + '</span>' +
+            '<button class="btn sm danger" data-act="borrarCarpetaSuelta" data-id="' + t.id +
+            '">Borrar</button></div>'
+          );
+        }).join('') + '</div>'
+      : '';
+
+    return lista + sinEstante + carpetas;
   }
 
   // --- Nivel 2: la ficha del tema y sus carpetas -----------------------------
@@ -652,12 +811,25 @@
   // --- Montaje ---------------------------------------------------------------
 
   E.html = function (S) {
+    /* Si el estante que estabas mirando ya no existe — lo acabas de borrar —
+       la navegación apunta a un sitio que no está. Se vuelve al principio en
+       vez de pintar una pantalla de un estante fantasma. */
+    if (S.ui.estGrupo &&
+        !(S.data.spotGroups || []).some(function (x) { return x.id === S.ui.estGrupo; })) {
+      S.ui.estGrupo = null;
+      S.ui.spotId = null;
+      S.ui.estCarpeta = null;
+      S.ui.estPapel = null;
+    }
+
     const tema = temaAbierto(S);
     const papel = papelAbierto(S);
     const estantes = S.data.spotGroups || [];
     const g = E.estante(S);
 
-    const cuerpo = !tema
+    const cuerpo = S.ui.estSueltos
+      ? nivelSueltos(S)
+      : !tema
       ? nivelTemas(S)
       : papel
       ? elPapel(S, papel)
@@ -669,7 +841,9 @@
       '<div class="page-head">' +
       '<div><h1>Estudio</h1>' +
       '<div class="micro" style="margin-top:2px">' +
-      (tema
+      (S.ui.estSueltos
+        ? 'Lo que se quedó fuera del recorrido'
+        : tema
         ? H.plural(carpetasDe(S, tema.id).length, 'carpeta') + ' · ' +
           H.plural(S.data.reviews.filter(function (r) { return r.spotId === tema.id; }).length,
                    'papel', 'papeles')
@@ -683,8 +857,14 @@
           '>' + H.esc(x.name) + '</option>';
       }).join('') +
       '</select></label>' +
+      // Sin esto el estante es de solo lectura: se puede crear y nunca
+      // renombrar ni borrar, porque el modal que lo hace no tiene puerta.
+      (g
+        ? '<button class="btn sm" data-act="editarEstante" style="height:31px;padding:0 10px"' +
+          ' title="Renombrar o eliminar este estante">✎</button>'
+        : '') +
       '<button class="btn sm" data-act="nuevoEstante" style="height:31px">+ Estante</button>' +
-      (tema ? '' :
+      (tema || S.ui.estSueltos ? '' :
         '<button class="btn primary" data-act="nuevoTema" style="height:31px">Nuevo tema</button>') +
       '</div></div>' +
 
@@ -703,9 +883,47 @@
         S.ui.spotId = null;
         S.ui.estCarpeta = null;
         S.ui.estPapel = null;
+        S.ui.estSueltos = false;
         repintar(S);
       });
     }
+
+    /* Colocar un papel suelto. Se hace con un desplegable y no arrastrando:
+       el destino puede estar en otro estante, y arrastrar entre pantallas que
+       no se ven a la vez no se puede. */
+    root.querySelectorAll('[data-mover]').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        if (!sel.value) return;
+        (async function () {
+          const res = await S.mutate('review:update',
+            { id: sel.getAttribute('data-mover'), spotId: sel.value, typeId: null });
+          if (res && !res.ok) {
+            H.modals.alert('No se pudo colocar el papel', res.error || '');
+            return;
+          }
+          repintar(S);
+        })();
+      });
+    });
+
+    root.querySelectorAll('[data-mover-tema]').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        if (!sel.value) return;
+        (async function () {
+          const res = await S.mutate('spot:update',
+            { id: sel.getAttribute('data-mover-tema'), groupId: sel.value });
+          if (res && !res.ok) {
+            H.modals.alert('No se pudo mover el tema', res.error || '');
+            return;
+          }
+          // Se salta al estante donde acaba de aterrizar: si no, el tema
+          // desaparece de esta pantalla y no se ve dónde ha ido.
+          S.ui.estGrupo = sel.value;
+          S.ui.estSueltos = false;
+          repintar(S);
+        })();
+      });
+    });
 
     const busca = root.querySelector('#estBusca');
     if (busca) {
@@ -793,6 +1011,12 @@
         // --- recorrido ---
         case 'abrirTema':
           S.ui.spotId = ds.id; S.ui.estCarpeta = null; S.ui.estPapel = null;
+          S.ui.estSueltos = false;
+          repintar(S);
+          break;
+        case 'abrirSueltos':
+          S.ui.estSueltos = true;
+          S.ui.spotId = null; S.ui.estCarpeta = null; S.ui.estPapel = null;
           repintar(S);
           break;
         case 'abrirCarpeta':
@@ -805,7 +1029,9 @@
           repintar(S);
           break;
         case 'irTemas':
-          salir(S, function () { S.ui.spotId = null; S.ui.estCarpeta = null; });
+          salir(S, function () {
+            S.ui.spotId = null; S.ui.estCarpeta = null; S.ui.estSueltos = false;
+          });
           break;
         case 'irTema':
           salir(S, function () { S.ui.estCarpeta = null; });
@@ -817,6 +1043,11 @@
 
         // --- estantes, temas y carpetas ---
         case 'nuevoEstante': H.modals.spotGroup(S, null); break;
+        case 'editarEstante': {
+          const est = E.estante(S);
+          if (est) H.modals.spotGroup(S, est.id);
+          break;
+        }
         case 'nuevoTema': H.modals.spot(S, null); break;
         case 'editarTema': H.modals.spot(S, ds.id); break;
         case 'borrarTema': {
@@ -827,12 +1058,22 @@
             'Se borran sus carpetas. ' +
             (nP
               ? H.plural(nP, 'papel', 'papeles') + ' ' + (nP === 1 ? 'pasa' : 'pasan') +
-                ' a General sin carpeta: no se borra ninguno.'
+                ' a "Papeles sueltos", en la lista de temas: no se borra ninguno.'
               : 'No tiene papeles.'),
             function () {
               S.mutate('spot:remove', { id: ds.id });
               S.ui.spotId = null; S.ui.estCarpeta = null; S.ui.estPapel = null;
             }
+          );
+          break;
+        }
+        case 'borrarCarpetaSuelta': {
+          const cs = S.data.noteTypes.find(function (x) { return x.id === ds.id; });
+          H.modals.confirm(
+            '¿Borrar la carpeta "' + (cs ? cs.name : '') + '"?',
+            'Es solo la etiqueta. Los papeles que la lleven se quedan como están, ' +
+            'sin carpeta: no se borra ninguno.',
+            function () { S.mutate('noteType:remove', { id: ds.id }); }
           );
           break;
         }

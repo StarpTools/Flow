@@ -750,9 +750,139 @@ const SCRIPT = `(async () => {
     await S.mutate('review:remove', { id: papel.id });
     ok('borrar el papel se lleva sus tarjetas',
        !S.data.reviews.some((r) => r.id === papel.id));
+
+    /* --- Un papel sin tema tiene que poder volver --------------------------
+       Borrar un tema no borra sus papeles: los deja sueltos. Si la oficina no
+       los recogiera en ninguna pantalla seguirían en el archivo sin forma de
+       llegar a ellos, que es la peor manera de perder algo: en silencio y
+       creyendo que se ha borrado. */
+    await S.mutate('review:add',
+      { title: 'Apuntes que pierden su tema', text: 'teoría que no se puede perder',
+        spotId: tema.id });
+    const huerfano = S.data.reviews[S.data.reviews.length - 1];
+    await S.mutate('spot:remove', { id: tema.id });
+    ok('borrar un tema NO borra sus papeles',
+       !!S.data.reviews.find((r) => r.id === huerfano.id));
+    ok('pero los deja sin tema',
+       S.data.reviews.find((r) => r.id === huerfano.id).spotId === null);
+
+    S.ui.spotId = null; S.ui.estCarpeta = null; S.ui.estPapel = null;
+    S.ui.estSueltos = false;
+    S.pausarRender = false;
+    S.setView('estudio');
+    await wait(220);
+    const cajonSueltos = document.querySelector('#view [data-act=\"abrirSueltos\"]');
+    ok('la lista de temas avisa de que hay papeles sueltos', !!cajonSueltos);
+
+    cajonSueltos.click();
+    await wait(220);
+    ok('y dentro está el papel que perdió su tema',
+       document.getElementById('view').innerText.indexOf('Apuntes que pierden su tema') !== -1);
+
+    /* Tirar uno desde aquí mismo. Sin esto, para borrar un papel que no
+       quieres hay que colocarlo antes en un tema: hacerle sitio justo a lo
+       que sobra. */
+    await S.mutate('review:add', { title: 'Papel que sobra', spotId: null });
+    const basura = S.data.reviews[S.data.reviews.length - 1];
+    await wait(240);
+    const tirar = document.querySelector(
+      '#view [data-act=\"borrarPapel\"][data-id=\"' + basura.id + '\"]');
+    ok('un papel suelto se puede tirar sin colocarlo antes', !!tirar);
+    tirar.click();
+    await wait(200);
+    document.querySelector('#modalRoot [data-yes]').click();
+    await wait(280);
+    ok('y al confirmar desaparece de verdad',
+       !S.data.reviews.some((r) => r.id === basura.id));
+
+    const mover = document.querySelector('#view [data-mover=\"' + huerfano.id + '\"]');
+    ok('con un desplegable para colocarlo en cualquier tema',
+       !!mover && !!mover.querySelector('option[value=\"' + otroTema.id + '\"]'));
+    mover.value = otroTema.id;
+    mover.dispatchEvent(new Event('change'));
+    await wait(300);
+    ok('y colocarlo lo devuelve a un tema de verdad',
+       S.data.reviews.find((r) => r.id === huerfano.id).spotId === otroTema.id,
+       'tema=' + S.data.reviews.find((r) => r.id === huerfano.id).spotId);
+
+    document.querySelector('#view [data-act=\"irTemas\"]').click();
+    await wait(220);
+    const avisoSueltos = document.querySelector('#view [data-act=\"abrirSueltos\"]');
+    ok('y el aviso deja de hablar de papeles cuando no queda ninguno',
+       !avisoSueltos || avisoSueltos.innerText.indexOf('papel sin tema') === -1);
+    await S.mutate('review:remove', { id: huerfano.id });
+
+    /* --- Un tema nace SIEMPRE en un estante --------------------------------
+       El desplegable del modal venía en "Sin estante", que es el único valor
+       con el que un tema desaparece nada más crearlo: la lista de temas es
+       siempre la de UN estante. Se creó el tema, se le metió dentro medio
+       curso y no se volvió a ver. */
+    S.ui.estGrupo = estanteId;
+    window.H.modals.spot(S, null);
+    await wait(220);
+    const selEstante = document.getElementById('spGroup');
+    ok('un tema nuevo viene ya con el estante que estás mirando',
+       !!selEstante && selEstante.value === estanteId,
+       'valor=' + (selEstante ? selEstante.value || '(vacío)' : 'no hay desplegable'));
+    ok('y habiendo estantes no se puede dejar sin ninguno',
+       !!selEstante && !selEstante.querySelector('option[value=\"\"]'));
+    window.H.modals.close();
+    await wait(150);
+
+    // Y si aun así uno se queda sin estante, se puede volver a colocar.
+    await S.mutate('spot:add', { name: 'Tema que perdió su estante', groupId: null });
+    const temaPerdido = S.data.spots[S.data.spots.length - 1];
+    S.setView('estudio');
+    await wait(220);
+    const cajonT = document.querySelector('#view [data-act=\"abrirSueltos\"]');
+    ok('un tema sin estante también se recoge',
+       !!cajonT && cajonT.innerText.indexOf('sin estante') !== -1);
+
+    cajonT.click();
+    await wait(220);
+    const selT = document.querySelector('#view [data-mover-tema=\"' + temaPerdido.id + '\"]');
+    ok('con un desplegable para ponerle uno', !!selT);
+    selT.value = estanteId;
+    selT.dispatchEvent(new Event('change'));
+    await wait(300);
+    ok('y al ponerselo vuelve a la lista de temas',
+       S.data.spots.find((x) => x.id === temaPerdido.id).groupId === estanteId);
+    await S.mutate('spot:remove', { id: temaPerdido.id });
+
+    /* --- Un estante también se borra ---------------------------------------
+       El modal sabía renombrarlo y eliminarlo desde el principio, pero no
+       tenía puerta: solo se abría para crear uno nuevo. Un estante que se
+       puede crear y no quitar convierte cualquier prueba en algo permanente. */
+    S.ui.estGrupo = estanteId;
+    S.ui.spotId = null; S.ui.estCarpeta = null; S.ui.estPapel = null;
+    S.ui.estSueltos = false;
+    S.setView('estudio');
+    await wait(220);
+    const lapiz = document.querySelector('#view [data-act=\"editarEstante\"]');
+    ok('la cabecera deja abrir el estante que estás mirando', !!lapiz);
+
+    lapiz.click();
+    await wait(220);
+    ok('el modal llega con su nombre y con el botón de eliminar',
+       !!document.getElementById('sgDel') &&
+       document.getElementById('sgName').value === 'Programación');
+
+    document.getElementById('sgDel').click();
+    await wait(200);
+    document.querySelector('#modalRoot [data-yes]').click();
+    await wait(320);
+    ok('borrar el estante lo quita de verdad',
+       !S.data.spotGroups.some((g) => g.id === estanteId));
+    ok('y sus temas no se van con él: se quedan sin estante',
+       S.data.spots.find((x) => x.id === otroTema.id).groupId === null);
+    ok('la vista no se queda en un estante fantasma', S.ui.estGrupo !== estanteId);
+
+    const rescate = document.querySelector('#view [data-act=\"abrirSueltos\"]');
+    ok('y aparecen en Papeles sueltos, con estante al que volver',
+       !!rescate && rescate.innerText.indexOf('sin estante') !== -1);
+
     await S.mutate('spot:remove', { id: otroTema.id });
     await S.mutate('spot:remove', { id: tema.id });
-    await S.mutate('spotGroup:remove', { id: estanteId });
     S.ui.spotId = spot.id;
     S.ui.estGrupo = null;
     S.ui.estCarpeta = null;
@@ -799,6 +929,162 @@ const SCRIPT = `(async () => {
          'contenido=' + cont.scrollHeight + ' hueco=' + cont.clientHeight +
          (sobra > 0 ? ' SE PASA ' + sobra + 'px' : ''));
     }
+
+    /* --- El calendario no se deforma con un nombre largo -------------------
+       El mínimo de una columna de una parte es su contenido, así que una
+       actividad de nombre largo se llevaba el ancho de la fila entera y dejaba
+       los otros
+       seis días en un dedo. Las columnas son fijas y el nombre parte de
+       línea; lo que crece es el alto. */
+    await S.mutate('activity:add',
+      { name: 'Estudio Mecánica de Materiales', kind: 'timed' });
+    const actLarga = S.data.activities[S.data.activities.length - 1];
+    // Un día cualquiera menos hoy: hoy ya lleva tres actividades del relleno
+    // de arriba y la celda solo pinta las tres primeras.
+    const nDia = hoyD.getDate() === 20 ? 21 : 20;
+    const diaLargo = window.H.dateKey(new Date(hoyD.getFullYear(), hoyD.getMonth(), nDia));
+    await S.mutate('plan:add',
+      { dates: [diaLargo], activityId: actLarga.id, plannedMins: 480 });
+    S.setView('planner');
+    await wait(320);
+
+    const fila = Array.from(document.querySelectorAll('#view .cal-cell')).slice(0, 7);
+    const anchos = fila.map((c) => Math.round(c.getBoundingClientRect().width));
+    ok('las siete columnas del calendario miden lo mismo',
+       fila.length === 7 && Math.max.apply(null, anchos) - Math.min.apply(null, anchos) <= 1,
+       anchos.join(' '));
+
+    const rejilla = document.querySelector('#view .cal');
+    ok('y un nombre largo no desborda la rejilla',
+       rejilla.scrollWidth <= rejilla.clientWidth + 1,
+       rejilla.scrollWidth + ' de ' + rejilla.clientWidth);
+
+    const nombreLargo = Array.from(document.querySelectorAll('#view .cal-item-name'))
+      .filter((n) => n.textContent.indexOf('Mecánica') !== -1)[0];
+    ok('parte de línea en vez de recortarse con puntos suspensivos',
+       !!nombreLargo && nombreLargo.getBoundingClientRect().height > 20,
+       nombreLargo ? Math.round(nombreLargo.getBoundingClientRect().height) + 'px de alto'
+                   : 'no se pintó');
+
+    /* --- Agendar varios días de una vez ------------------------------------
+       Repetir solía significar "todos los lunes del mes": para una asignatura
+       que se lleva todos los días hasta el examen había que picar los siete
+       días de la semana a mano y encima tragarse el mes entero. */
+    /* Con un evento dentro a propósito: la lista de eventos del día es lo
+       último que se le añadió a este modal, y un solo desajuste de etiquetas
+       ahí cierra el cuerpo antes de tiempo y echa el pie fuera de la caja. */
+    await S.mutate('event:add',
+      { title: 'Cita de prueba', date: hoyKey, time: '12:00', avisarMin: -1 });
+
+    S.setView('planner');
+    await wait(260);
+    window.H.modals.planDay(S, hoyKey);
+    await wait(240);
+
+    const hasta = document.getElementById('pHasta');
+    ok('el modal del día trae un tope de fecha', !!hasta && !!hasta.value);
+
+    /* El pie tiene que quedarse DENTRO de la caja. Es un modal que ha ido
+       creciendo, y en cuanto el cuerpo no encoge empuja Cerrar y Vaciar fuera
+       de la pantalla: el modal se abre y no hay forma de terminar. */
+    const caja = document.querySelector('#modalRoot .modal').getBoundingClientRect();
+    const pie = document.querySelector('#modalRoot .modal-foot').getBoundingClientRect();
+    ok('y su pie no se sale de la caja',
+       pie.bottom <= caja.bottom + 1 && caja.bottom <= window.innerHeight + 1,
+       'pie=' + Math.round(pie.bottom) + ' caja=' + Math.round(caja.bottom) +
+       ' ventana=' + window.innerHeight);
+    ok('y atajos para no picar los siete días a mano',
+       document.querySelectorAll('#modalRoot [data-preset]').length === 4);
+
+    // Toda la semana, de hoy a dentro de seis días: siete días seguidos.
+    const finTramo = window.H.repaso.sumarDias(hoyKey, 6);
+    hasta.value = finTramo;
+    hasta.dispatchEvent(new Event('change'));
+    document.querySelector('#modalRoot [data-preset=\"semana\"]').click();
+    await wait(200);
+    const btnAgregar = document.getElementById('pAdd');
+    ok('un clic deja marcada la semana entera',
+       document.querySelectorAll('#modalRoot .chip.on').length === 7);
+    ok('y el botón dice a cuántos días va',
+       btnAgregar.textContent.indexOf('7 días') !== -1, btnAgregar.textContent);
+
+    const actAgenda = window.H.timedActs(S.data)[0];
+    document.getElementById('pAct').value = actAgenda.id;
+    const antesPlan = Object.keys(S.data.plan).length;
+    btnAgregar.click();
+    await wait(360);
+    let conEsa = 0;
+    for (let i = 0; i <= 6; i++) {
+      const k = window.H.repaso.sumarDias(hoyKey, i);
+      if ((S.data.plan[k] || []).some((it) => it.activityId === actAgenda.id)) conEsa++;
+    }
+    ok('agenda los siete días del tramo de una vez', conEsa === 7, conEsa + ' de 7');
+    ok('y no se sale del tramo',
+       !(S.data.plan[window.H.repaso.sumarDias(hoyKey, 7)] || [])
+         .some((it) => it.activityId === actAgenda.id),
+       'planes=' + antesPlan + '->' + Object.keys(S.data.plan).length);
+
+    window.H.modals.close();
+    await wait(150);
+    for (let i = 0; i <= 6; i++) {
+      await S.mutate('plan:clearDay', { date: window.H.repaso.sumarDias(hoyKey, i) });
+    }
+    for (const e of S.data.events.slice()) await S.mutate('event:remove', { id: e.id });
+
+    /* --- Eventos: lo que no se cumple, llega -------------------------------
+       Una entrega o una reunión no son plan: no tienen duración, no suman
+       horas y no se cumplen a medias. Por eso viven en su propia lista y no
+       tocan ninguna cuenta del día. */
+    const evAlta = await S.mutate('event:add', {
+      title: 'Entrega del informe', date: diaLargo, time: '16:30',
+      avisarMin: 60, note: 'Con el cliente'
+    });
+    ok('se crea un evento', evAlta.ok, evAlta.error || '');
+    const evento = S.data.events[S.data.events.length - 1];
+    ok('nace armado y sin avisar todavía',
+       evento.avisadoAt === null && evento.avisarMin === 60);
+
+    const evSinTitulo = await S.mutate('event:add', { title: '   ', date: diaLargo });
+    ok('rechaza un evento sin título', !evSinTitulo.ok, evSinTitulo.error);
+    const evMalaFecha = await S.mutate('event:add', { title: 'X', date: '20/09/2026' });
+    ok('y una fecha que no es una fecha', !evMalaFecha.ok, evMalaFecha.error);
+    const evMalaHora = await S.mutate('event:add',
+      { title: 'X', date: diaLargo, time: '25:99' });
+    ok('y una hora imposible', !evMalaHora.ok, evMalaHora.error);
+
+    S.setView('planner');
+    await wait(300);
+    ok('el evento sale en su día del calendario',
+       !!document.querySelector('#view .cal-evento') &&
+       document.getElementById('view').innerText.indexOf('Entrega del informe') !== -1);
+    ok('y no cuenta como horas agendadas',
+       document.getElementById('view').innerText.indexOf('16:30') !== -1);
+
+    /* Mover un evento vuelve a armar su aviso. Sin esto, cambiar una reunión
+       de las 9 a las 18 dejaría el aviso dado por las 9 y no sonaría nunca. */
+    S.data.events.find((x) => x.id === evento.id).avisadoAt = '2026-01-01T00:00:00.000Z';
+    await S.mutate('event:update', { id: evento.id, time: '18:00' });
+    ok('cambiar la hora vuelve a armar el aviso',
+       S.data.events.find((x) => x.id === evento.id).avisadoAt === null);
+    await S.mutate('event:update', { id: evento.id, note: 'Solo cambia la nota' });
+    ok('y cambiar solo la nota no lo rearma',
+       S.data.events.find((x) => x.id === evento.id).avisadoAt === null);
+
+    // Sin aviso, para que la prueba no dispare una notificación de verdad.
+    await S.mutate('event:add', {
+      title: 'Reunión con el cliente', date: hoyKey, time: '23:59', avisarMin: -1
+    });
+    S.setView('today');
+    await wait(300);
+    ok('lo que viene se ve en Hoy sin ir a buscarlo',
+       !!document.querySelector('#view .evento-pill') &&
+       document.getElementById('view').innerText.indexOf('Reunión con el cliente') !== -1);
+
+    for (const e of S.data.events.slice()) await S.mutate('event:remove', { id: e.id });
+    ok('y se borran', S.data.events.length === 0);
+
+    await S.mutate('plan:clearDay', { date: diaLargo });
+    await S.mutate('activity:remove', { id: actLarga.id });
 
     // Limpieza del relleno
     for (let dia = 1; dia <= 28; dia++) {
@@ -868,6 +1154,32 @@ const CHECKIN_SCRIPT = `(async () => {
   const S = window.H.S;
 
   try {
+    /* --- El aviso de un evento salta solo --------------------------------
+       Lo decide el proceso principal, no la ventana, por lo mismo que el
+       cronometro: un recordatorio que solo funciona con la pantalla abierta
+       en la pestana correcta no es un recordatorio. Se comprueba de verdad,
+       contra el reloj, porque es lo unico que demuestra que el temporizador
+       esta vivo. La ronda es cada 30s: se sondea hasta 45. */
+    const ahora = new Date();
+    const hoyEv = ahora.getFullYear() + '-' +
+      String(ahora.getMonth() + 1).padStart(2, '0') + '-' +
+      String(ahora.getDate()).padStart(2, '0');
+    const horaEv = String(ahora.getHours()).padStart(2, '0') + ':' +
+      String(ahora.getMinutes()).padStart(2, '0');
+
+    await S.mutate('event:add',
+      { title: 'Prueba de aviso', date: hoyEv, time: horaEv, avisarMin: 0 });
+    const evPrueba = S.data.events[S.data.events.length - 1];
+
+    let avisado = false;
+    for (let i = 0; i < 45; i++) {
+      await wait(1000);
+      const e = (S.data.events || []).find((x) => x.id === evPrueba.id);
+      if (e && e.avisadoAt) { avisado = true; break; }
+    }
+    ok('el aviso de un evento salta solo, sin tocar nada', avisado);
+    await S.mutate('event:remove', { id: evPrueba.id });
+
     await S.mutate('settings:update', { checkinMinMin: 1, checkinMaxMin: 1, checkinGraceSec: 15 });
     const act = S.data.activities[0];
     await window.hq.session.start({ activityId: act.id });

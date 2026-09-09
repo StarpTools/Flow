@@ -31,6 +31,15 @@
 
       const esDescanso = H.isRest(d, key);
 
+      /* Los eventos van arriba del todo del día y con otro aspecto: no son
+         plan. Una entrega no se cumple a medias ni suma horas — llega. */
+      const evs = (d.events || []).filter(function (e) { return e.date === key; });
+      const evsHtml = evs.map(function (e) {
+        return '<div class="cal-evento">' +
+          (e.time ? '<span class="cal-evento-hora">' + e.time + '</span>' : '') +
+          '<span>' + H.esc(e.title) + '</span></div>';
+      }).join('');
+
       let cls = 'cal-cell';
       if (esDescanso) cls += ' rest';
       else if (key < todayKey) cls += ' past';
@@ -41,7 +50,7 @@
       if (esDescanso) {
         html +=
           '<button class="' + cls + '" data-act="openDay" data-date="' + key + '">' +
-          '<div class="cal-num">' + day + '</div>' +
+          '<div class="cal-num">' + day + '</div>' + evsHtml +
           '<div class="cal-items" style="justify-content:center;align-items:center">' +
           '<span class="micro" style="font-weight:600">Descanso</span></div></button>';
         continue;
@@ -51,7 +60,7 @@
       const rest = items.length - shown.length;
 
       let inner =
-        '<div class="cal-num">' + day + '</div><div class="cal-items">' +
+        '<div class="cal-num">' + day + '</div>' + evsHtml + '<div class="cal-items">' +
         shown
           .map(function (it) {
             return (
@@ -119,18 +128,30 @@
         '<button class="btn sm" data-act="prevMonth">←</button>' +
         '<button class="btn sm" data-act="thisMonth">Hoy</button>' +
         '<button class="btn sm" data-act="nextMonth">→</button>' +
+        '<button class="btn sm" data-act="nuevoEvento">+ Evento</button>' +
         '<button class="btn sm" data-act="manageActs">Actividades</button>' +
         '</div></div>' +
         '<div class="cal">' + monthCells(S) + '</div>' +
         '<div class="micro" style="margin-top:10px">' +
         'Haz clic en un día para agendar. La barra verde bajo cada día pasado muestra ' +
-        'cuánto del plan cumpliste realmente.</div>'
+        'cuánto del plan cumpliste realmente. Con “+ Evento” apuntas lo que no se ' +
+        'cumple sino que llega: una entrega, una reunión — y te avisa.</div>'
       );
     },
 
     bind: function (root, S) {
       H.delegate(root, function (act, ds) {
         switch (act) {
+          case 'nuevoEvento': {
+            /* Cae en hoy si hoy está en el mes que miras, y si no en el día 1:
+               apuntar una entrega de noviembre desde noviembre y que el modal
+               proponga hoy es proponer justo la fecha equivocada. */
+            const pm = S.ui.planMonth;
+            const mes = pm.y + '-' + String(pm.m + 1).padStart(2, '0');
+            const hoyK = H.dateKey();
+            H.modals.evento(S, null, hoyK.indexOf(mes) === 0 ? hoyK : mes + '-01');
+            break;
+          }
           case 'prevMonth': {
             const p = S.ui.planMonth;
             const nd = new Date(p.y, p.m - 1, 1);

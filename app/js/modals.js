@@ -139,16 +139,27 @@
     const todayKey = H.dateKey();
     const { y, m } = S.ui.planMonth;
 
-    // Qué días del mes visible caen en cada día de la semana (sin tocar el pasado).
-    function datesForDows(dows) {
+    /* Los días del tramo que caen en los días de semana elegidos.
+
+       El tramo empieza en el día que abriste y acaba donde diga "hasta", en vez
+       de barrer el mes entero: "de hoy al viernes" es lo que se quiere agendar
+       la mayoría de las veces, y con el mes como única unidad había que elegir
+       entre un solo día o los cuatro lunes que quedan. El pasado no se toca
+       nunca: reescribir un plan que ya no puedes cumplir es falsear el
+       cumplimiento hacia atrás. */
+    const TOPE_DIAS = 400;
+
+    function datesForDows(dows, hasta) {
       if (!dows.length) return [dateKey];
+      const desde = dateKey < todayKey ? todayKey : dateKey;
+      if (!hasta || hasta < desde) return [];
+
       const out = [];
-      const daysInMonth = new Date(y, m + 1, 0).getDate();
-      for (let day = 1; day <= daysInMonth; day++) {
-        const dt = new Date(y, m, day);
-        const key = H.dateKey(dt);
-        if (key < todayKey) continue;
-        if (dows.indexOf(H.dowMon(dt)) !== -1) out.push(key);
+      let dt = H.parseKey(desde);
+      const fin = H.parseKey(hasta);
+      for (let i = 0; i < TOPE_DIAS && dt <= fin; i++) {
+        if (dows.indexOf(H.dowMon(dt)) !== -1) out.push(H.dateKey(dt));
+        dt = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1);
       }
       return out;
     }
@@ -186,6 +197,21 @@
         .join('');
     }
 
+    // Los eventos del día se ven aquí aunque no sean plan: es la pantalla a la
+    // que vienes cuando piensas en ese día concreto.
+    function eventosHtml() {
+      const evs = (S.data.events || []).filter(function (e) { return e.date === dateKey; });
+      if (!evs.length) return '<div class="micro">Ningúno.</div>';
+      return evs.map(function (e) {
+        return (
+          '<div class="list-row" style="padding-left:0;padding-right:0">' +
+          '<div class="grow">' + H.esc(e.title) +
+          (e.time ? ' <span class="micro">· ' + e.time + '</span>' : '') + '</div>' +
+          '<button class="btn sm" data-ev="' + e.id + '">Editar</button></div>'
+        );
+      }).join('');
+    }
+
     const chips = H.DOW.map(function (n, i) {
       const on = i === H.dowMon(date);
       return '<button class="chip' + (on ? ' on' : '') + '" data-dow="' + i + '">' + n + '</button>';
@@ -208,13 +234,26 @@
 
       '<div class="eyebrow" style="margin-bottom:7px">Repetir en</div>' +
       '<div class="row tight" style="flex-wrap:wrap;margin-bottom:6px" id="chipRow">' + chips + '</div>' +
+      '<div class="row tight" style="flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">' +
+      '<button class="btn sm" data-preset="semana">Todos los días</button>' +
+      '<button class="btn sm" data-preset="laborables">Entre semana</button>' +
+      '<button class="btn sm" data-preset="finde">Fin de semana</button>' +
+      '<button class="btn sm" data-preset="ninguno">Solo este día</button>' +
+      '<label class="field" style="width:150px;margin:0 0 0 auto"><span>Hasta el</span>' +
+      '<input type="date" id="pHasta" value="' + H.dateKey(new Date(y, m + 1, 0)) +
+      '" min="' + (dateKey < todayKey ? todayKey : dateKey) + '"></label>' +
+      '</div>' +
       '<div class="micro" style="margin-bottom:16px">' +
-      'Deselecciona todo para agendar solo este día. Los días ya pasados nunca se tocan.</div>' +
+      '"Solo este día" deja de repetir. Los días ya pasados nunca se tocan.</div>' +
 
       '<button class="btn primary" id="pAdd" style="width:100%;justify-content:center">Agregar</button>' +
 
       '<div class="eyebrow" style="margin:18px 0 4px">Agendado este día</div>' +
       '<div id="pItems">' + itemsHtml() + '</div>' +
+
+      '<div class="eyebrow" style="margin:18px 0 4px">Eventos de este día</div>' +
+      '<div id="pEvents">' + eventosHtml() + '</div>' +
+      '<button class="btn sm" id="pNewEvent" style="margin-top:8px">+ Evento</button>' +
       '</div>' +
 
       '<div class="modal-foot">' +
@@ -224,6 +263,19 @@
       '<button class="btn" data-close>Cerrar</button></div></div>',
 
       function (o, done) {
+        /* El modal del evento sustituye a este en vez de abrirse encima: dos
+           modales apilados dejan al de abajo inalcanzable y con datos a medias. */
+        o.querySelector('#pNewEvent').addEventListener('click', function () {
+          done();
+          M.evento(S, null, dateKey);
+        });
+        o.querySelector('#pEvents').addEventListener('click', function (e) {
+          const b = e.target.closest('[data-ev]');
+          if (!b) return;
+          done();
+          M.evento(S, b.getAttribute('data-ev'), dateKey);
+        });
+
         const chipRow = o.querySelector('#chipRow');
         const hint = o.querySelector('#repeatHint');
         const addBtn = o.querySelector('#pAdd');
@@ -236,15 +288,20 @@
             });
         }
 
+        const hastaInput = o.querySelector('#pHasta');
+
         function refreshHint() {
           const dows = activeDows();
-          const targets = datesForDows(dows);
+          const targets = datesForDows(dows, hastaInput.value);
           if (!dows.length) {
             hint.textContent = 'Solo este día';
             addBtn.textContent = 'Agregar a este día';
+          } else if (!targets.length) {
+            hint.textContent = 'Ningún día en ese tramo';
+            addBtn.textContent = 'Nada que agregar';
           } else {
             hint.textContent =
-              targets.length + ' días de ' + H.MONTHS[m] + ' (' +
+              targets.length + ' días hasta el ' + H.shortDate(hastaInput.value) + ' (' +
               dows.map(function (i) { return H.DOW[i]; }).join(', ') + ')';
             addBtn.textContent = 'Agregar a ' + targets.length + ' días';
           }
@@ -261,6 +318,26 @@
           refreshHint();
         });
 
+        hastaInput.addEventListener('change', refreshHint);
+
+        /* Atajos. "Toda la semana" son siete clics uno a uno, y es justo lo que
+           más se agenda: un curso que se lleva todos los días hasta el examen. */
+        const PRESETS = {
+          semana: [0, 1, 2, 3, 4, 5, 6],
+          laborables: [0, 1, 2, 3, 4],
+          finde: [5, 6],
+          ninguno: []
+        };
+        o.querySelectorAll('[data-preset]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            const dows = PRESETS[b.getAttribute('data-preset')];
+            chipRow.querySelectorAll('.chip').forEach(function (c) {
+              c.classList.toggle('on', dows.indexOf(Number(c.dataset.dow)) !== -1);
+            });
+            refreshHint();
+          });
+        });
+
         const duracion = M.duracionBind(o, 'pMins', 'pMinsHint');
 
         addBtn.addEventListener('click', async function () {
@@ -271,8 +348,10 @@
             o.querySelector('#pMins').focus();
             return;
           }
+          const dias = datesForDows(activeDows(), hastaInput.value);
+          if (!dias.length) return;
           await S.mutate('plan:add', {
-            dates: datesForDows(activeDows()),
+            dates: dias,
             activityId: activityId,
             spotId: o.querySelector('#pSpot').value || null,
             plannedMins: mins
@@ -313,6 +392,107 @@
   };
 
   // --- Actividades --------------------------------------------------------
+
+  /* --- Evento -------------------------------------------------------------
+
+     Un evento no es plan. El plan son horas que cumples o no; un evento es un
+     punto en el tiempo que simplemente llega: una entrega, una reunión, un
+     examen. Por eso no tiene duración ni entra en el cumplimiento del día. */
+
+  // Antelación del aviso. -1 es "ninguno": un evento apuntado para verlo venir
+  // en el calendario no tiene por qué interrumpirte.
+  const AVISOS = [
+    [-1, 'Sin aviso'],
+    [0, 'A la hora'],
+    [15, '15 minutos antes'],
+    [60, '1 hora antes'],
+    [180, '3 horas antes'],
+    [1440, 'Un día antes'],
+    [4320, 'Tres días antes'],
+    [10080, 'Una semana antes']
+  ];
+
+  M.evento = function (S, eventId, dateKey) {
+    const ev = eventId ? (S.data.events || []).find(function (x) { return x.id === eventId; }) : null;
+    const fecha = ev ? ev.date : (dateKey || H.dateKey());
+    const avisa = ev ? ev.avisarMin : 60;
+
+    open(
+      '<div class="modal"><div class="modal-head"><h2>' +
+      (ev ? 'Editar evento' : 'Nuevo evento') + '</h2>' +
+      '<button class="icon-btn" data-close>×</button></div>' +
+      '<div class="modal-body">' +
+
+      '<label class="field" style="margin-bottom:12px"><span>Qué es</span>' +
+      '<input type="text" id="evTitle" value="' + H.esc(ev ? ev.title : '') +
+      '" placeholder="Entrega del informe / Reunión con el cliente"></label>' +
+
+      '<div class="row tight" style="align-items:flex-end;margin-bottom:12px">' +
+      '<label class="field grow" style="margin:0"><span>Día</span>' +
+      '<input type="date" id="evDate" value="' + fecha + '"></label>' +
+      '<label class="field" style="width:120px;margin:0"><span>Hora</span>' +
+      '<input type="time" id="evTime" value="' + (ev ? ev.time : '') + '"></label>' +
+      '</div>' +
+      '<div class="micro" style="margin:-6px 0 14px">' +
+      'Sin hora es un evento de todo el día: el aviso se cuenta desde las 9:00.</div>' +
+
+      '<label class="field" style="margin-bottom:12px"><span>Avisarme</span>' +
+      '<select id="evAviso">' +
+      AVISOS.map(function (a) {
+        return '<option value="' + a[0] + '"' + (a[0] === avisa ? ' selected' : '') +
+          '>' + a[1] + '</option>';
+      }).join('') +
+      '</select></label>' +
+
+      '<label class="field" style="margin-bottom:6px"><span>Nota (opcional)</span>' +
+      '<textarea id="evNote" rows="2" placeholder="Con quién, dónde, qué llevar">' +
+      H.esc(ev ? ev.note : '') + '</textarea></label>' +
+
+      '<div class="micro" id="evErr" style="margin-top:10px;color:var(--neg)"></div>' +
+      '</div><div class="modal-foot">' +
+      (ev ? '<button class="btn danger" id="evDel" style="margin-right:auto">Eliminar</button>' : '') +
+      '<button class="btn" data-close>Cancelar</button>' +
+      '<button class="btn primary" id="evSave">Guardar</button></div></div>',
+
+      function (o, done) {
+        const err = o.querySelector('#evErr');
+
+        o.querySelector('#evSave').addEventListener('click', async function () {
+          const res = await S.mutate(ev ? 'event:update' : 'event:add', {
+            id: ev ? ev.id : undefined,
+            title: o.querySelector('#evTitle').value,
+            date: o.querySelector('#evDate').value,
+            time: o.querySelector('#evTime').value,
+            avisarMin: Number(o.querySelector('#evAviso').value),
+            note: o.querySelector('#evNote').value
+          });
+          if (res && !res.ok) { err.textContent = res.error || 'No se pudo guardar'; return; }
+          done();
+          S.render();
+        });
+
+        const del = o.querySelector('#evDel');
+        if (del) {
+          del.addEventListener('click', function () {
+            done();
+            M.confirm('¿Eliminar "' + ev.title + '"?',
+              'El evento desaparece del calendario y no volverá a avisar.',
+              async function () {
+                await S.mutate('event:remove', { id: ev.id });
+                S.render();
+              });
+          });
+        }
+
+        o.querySelectorAll('[data-close]').forEach(function (b) {
+          b.addEventListener('click', done);
+        });
+        const t = o.querySelector('#evTitle');
+        t.focus();
+        t.select();
+      }
+    );
+  };
 
   M.activities = function (S) {
     function fila(a) {
@@ -450,6 +630,15 @@
        ámbito del bloc estás escribiendo. Se elige aquí porque es donde se
        decide qué es este spot. */
     const color = sp ? sp.color : H.PALETTE[S.data.spots.length % H.PALETTE.length];
+
+    /* El estante en el que nace el tema. Uno nuevo se queda en el que estás
+       mirando, y no existe la opción de dejarlo sin estante: un tema sin
+       estante no sale en ninguna lista — la oficina se recorre estante a
+       estante — y desaparecería nada más crearlo, con todo lo que le metas
+       dentro. Ya pasó una vez y costó un curso entero de apuntes. */
+    const estanteActual = sp
+      ? (sp.groupId || null)
+      : ((H.estudio && H.estudio.estante(S) || {}).id || null);
     const muestras = H.PALETTE.map(function (c) {
       return '<button class="chip" data-color="' + c + '" style="width:26px;height:26px;' +
         'padding:0;background:' + c + ';border-color:' + (c === color ? 'var(--ink)' : 'transparent') +
@@ -458,7 +647,7 @@
 
     open(
       '<div class="modal"><div class="modal-head"><h2>' +
-      (sp ? 'Editar spot' : 'Nuevo spot') + '</h2>' +
+      (sp ? 'Editar tema' : 'Nuevo tema') + '</h2>' +
       '<button class="icon-btn" data-close>×</button></div>' +
       '<div class="modal-body">' +
       '<label class="field" style="margin-bottom:12px"><span>Nombre</span>' +
@@ -472,10 +661,12 @@
       // desde aquí: abrir un modal encima de otro se lleva por delante el
       // primero con todo lo que llevaras escrito.
       '<label class="field" style="margin-bottom:12px"><span>Estante</span>' +
-      '<select id="spGroup"><option value="">Sin estante</option>' +
+      '<select id="spGroup">' +
+      // Solo cuando no hay ni un estante donde ponerlo.
+      ((S.data.spotGroups || []).length ? '' : '<option value="">Sin estante</option>') +
       (S.data.spotGroups || []).map(function (g) {
         return '<option value="' + g.id + '"' +
-          (sp && sp.groupId === g.id ? ' selected' : '') + '>' + H.esc(g.name) + '</option>';
+          (g.id === estanteActual ? ' selected' : '') + '>' + H.esc(g.name) + '</option>';
       }).join('') +
       '</select></label>' +
       '<div class="eyebrow" style="margin-bottom:7px">Color</div>' +
@@ -578,7 +769,9 @@
               '¿Eliminar el estante "' + g.name + '"?',
               dentro
                 ? H.plural(dentro, 'tema') + ' ' + (dentro === 1 ? 'se queda' : 'se quedan') +
-                  ' sin estante. No se borra ninguno, ni sus sesiones, ni sus papeles.'
+                  ' sin estante y ' + (dentro === 1 ? 'lo recoge' : 'los recoge') +
+                  ' "Papeles sueltos", donde puedes darles otro. No se borra ' +
+                  'ninguno, ni sus sesiones, ni sus papeles.'
                 : 'Está vacío, no se pierde nada.',
               async function () {
                 await S.mutate('spotGroup:remove', { id: g.id });
@@ -1167,6 +1360,17 @@
       'X minutos al azar dentro de ese rango. Si no respondes dentro de la gracia, ' +
       'ese tramo no se cuenta y la sesión se pausa sola.</div>' +
 
+      '<div class="eyebrow" style="margin-bottom:8px">Avisos de los eventos</div>' +
+      '<label class="row tight" style="align-items:center;margin-bottom:6px;cursor:pointer">' +
+      '<input type="checkbox" id="sArranque"' + (st.arrancarConWindows ? ' checked' : '') + '>' +
+      '<span>Abrir Flow al iniciar Windows, minimizado en el widget</span></label>' +
+      '<div class="micro" style="margin-bottom:18px">' +
+      'Un aviso solo puede saltar con Flow abierto. Sin esto, el día de una ' +
+      'entrega el recordatorio depende de que te acuerdes de abrir la app, que ' +
+      'es justo lo que el recordatorio venía a resolver. Se registra en Windows ' +
+      'desde la app instalada; en desarrollo se guarda pero no se aplica.' +
+      '</div>' +
+
       '<div class="eyebrow" style="margin-bottom:8px">Datos</div>' +
       '<div class="micro" style="margin-bottom:8px">Guardados en:<br>' +
       '<span style="color:var(--ink-2)">' + H.esc(S.dataPath) + '</span></div>' +
@@ -1196,7 +1400,8 @@
           await S.mutate('settings:update', {
             checkinMinMin: Math.max(1, min),
             checkinMaxMin: Math.max(min, max),
-            checkinGraceSec: Math.max(15, parseInt(o.querySelector('#sGrace').value, 10) || 120)
+            checkinGraceSec: Math.max(15, parseInt(o.querySelector('#sGrace').value, 10) || 120),
+            arrancarConWindows: o.querySelector('#sArranque').checked
           });
           done();
         });

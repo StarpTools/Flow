@@ -22,6 +22,9 @@
       estGrupo: null,          // estante elegido en el desplegable
       estCarpeta: null,        // carpeta abierta · 'sin' = los papeles sueltos
       estPapel: null,          // papel abierto, o null si se ve la lista
+      // Pantalla de los papeles que se quedaron sin tema. No es un nivel del
+      // recorrido: es la puerta de vuelta de lo que se cayó fuera de él.
+      estSueltos: false,
       estBusca: '',
       // Lo que estás escribiendo, fuera de los datos guardados: si viviera en
       // S.data, cualquier repintado se llevaría el párrafo a medias.

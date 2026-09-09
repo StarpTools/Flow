@@ -16,10 +16,51 @@ Cuatro niveles, y cada uno es una colección en el archivo de datos:
 El papel NO es una tarjeta: es el documento, y sus tarjetas cuelgan de él con
 un calendario SM-2 cada una. Hoy saca tarjetas, no papeles.
 
+Cada nivel se lista SIEMPRE dentro de su padre: los temas son los de un
+estante, los papeles los de un tema. Así que un hijo sin padre no aparece en
+ninguna pantalla — sigue en el archivo y parece borrado. Dos reglas de ahí:
+
+- Nada se crea sin padre. El modal de tema trae puesto el estante que estás
+  mirando y no ofrece "Sin estante" habiendo estantes.
+- Lo que se queda sin padre se recoge. La pantalla "Papeles sueltos" sale junto
+  a los temas (no pertenece a ningún estante) y reúne los papeles sin tema, los
+  temas sin estante y las carpetas sin tema, con un desplegable para devolver
+  cada uno a su sitio, o para tirarlo sin tener que colocarlo antes. Borrar un
+  tema NO borra sus papeles ni un estante sus temas: caen ahí.
+- Lo que se crea se borra. El estante se renombra y se elimina con el lápiz de
+  la cabecera; sin él su modal no tenía puerta y era de solo lectura.
+
 Las imágenes viven sueltas en `<datos>/imagenes/`, se enlazan desde el texto
 con `[[nombre]]` y se leen bajo demanda como data URL (la CSP sigue cerrada:
 solo `self` y `data:`). El panel de la derecha se ensancha y tiene tamaño real,
 pero nunca se pone encima del texto: la teoría conserva 400px como mínimo.
+
+## Eventos (pestaña Planificar)
+
+Un evento NO es plan. El plan son horas que cumples o no; un evento es un punto
+en el tiempo que simplemente llega — una entrega, una reunión. Por eso vive en
+`events`, no suma horas y no entra en ninguna cuenta de cumplimiento.
+
+El aviso lo decide `main.js`, no la ventana, por lo mismo que el cronómetro: un
+recordatorio que solo funciona con la pantalla abierta no es un recordatorio.
+Una ronda cada 30s, una al arrancar para recuperar lo vencido con la app
+cerrada, y nada que venciera hace más de 6h (abrir Flow el jueves no puede
+soltar de golpe los avisos del lunes). Un evento sin hora se avisa contando
+desde las 9:00. Mover un evento o cambiar su antelación rearma el aviso.
+
+Para que el aviso llegue de verdad hay tres piezas que no se ven:
+`app.setAppUserModelId` (sin él Windows no enseña la notificación, y sin dar
+error), el bloqueo de instancia única, y `--oculto` con
+`setLoginItemSettings` — solo en la app empaquetada: en desarrollo registraría
+electron.exe.
+
+## Repetir en el plan
+
+Agendar repite sobre un TRAMO, no sobre el mes: del día que abres al que diga
+"Hasta el". Con el mes como única unidad había que elegir entre un solo día o
+todos los lunes que quedaran, y "esta asignatura todos los días hasta el
+examen" no se podía decir. Los atajos (todos los días / entre semana / fin de
+semana) evitan picar los siete chips a mano. El pasado no se toca nunca.
 
 ## Skill routing
 
@@ -42,14 +83,14 @@ Key routing rules:
 
 ## Pruebas
 
-Cuatro suites, 355 comprobaciones en total:
+Cuatro suites, 404 comprobaciones en total:
 
-- `HQ_SELFTEST=1 npm start` — app completa (133) · `HQ_SELFTEST=2` (143, incluye
+- `HQ_SELFTEST=1 npm start` — app completa (174) · `HQ_SELFTEST=2` (185, incluye
   verificaciones contra el reloj real). Escriben en un almacén temporal aparte,
   nunca en los datos reales del usuario.
 - `node tools/prueba-repaso.js` — algoritmo SM-2 (30), sin interfaz.
 - `node tools/prueba-notas.js` — formato de las notas y sus marcas (121), sin interfaz.
-- `node tools/prueba-datos.js` — resistencia del archivo de datos (71).
+- `node tools/prueba-datos.js` — resistencia del archivo de datos (79).
 
 El almacén de pruebas (`%TEMP%/flow-pruebas`) **persiste entre corridas** y el
 selftest borra el ámbito "Salud" sin reponerlo: a partir de la segunda corrida

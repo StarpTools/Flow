@@ -32,7 +32,7 @@ function escribir(dir, obj) {
   const dir = carpetaLimpia();
   const d = store.init(dir);
   ok('archivo nuevo arranca con valores de fábrica',
-     d.activities.length > 0 && d.areas.length === 7 && d.version === 8);
+     d.activities.length > 0 && d.areas.length === 7 && d.version === 9);
   ok('el archivo se escribe en disco',
      fs.existsSync(path.join(dir, 'flow-data.json')));
   /* Un archivo nuevo trae un estante y ninguna carpeta. Sembrar carpetas de
@@ -156,7 +156,7 @@ function escribir(dir, obj) {
      rv1.typeId === null, JSON.stringify(rv1.typeId));
   ok('la nota vacía de v4 se descarta', !d.reviews.some((r) => r.id === 'rv2'),
      'quedan ' + d.reviews.length);
-  ok('el archivo queda marcado como v8', d.version === 8, 'version=' + d.version);
+  ok('el archivo queda marcado como v9', d.version === 9, 'version=' + d.version);
 }
 
 // --- 2c. El bloc aguanta basura ---------------------------------------------
@@ -330,7 +330,7 @@ function escribir(dir, obj) {
   ok('y todos los temas que ya existían entran en él',
      d.spots.every((s) => s.groupId === d.spotGroups[0].id),
      d.spots.map((s) => s.name + '→' + s.groupId).join(' | '));
-  ok('el archivo queda marcado como v8', d.version === 8, 'version=' + d.version);
+  ok('el archivo queda marcado como v9', d.version === 9, 'version=' + d.version);
 }
 
 // --- 2h. Los grupos aguantan basura -----------------------------------------
@@ -453,7 +453,54 @@ function escribir(dir, obj) {
        typeof r.ef === 'undefined'));
   ok('y todos tienen sus dos listas nuevas',
      d.reviews.every((r) => Array.isArray(r.tarjetas) && Array.isArray(r.imagenes)));
-  ok('el archivo queda marcado como v8', d.version === 8, 'version=' + d.version);
+  ok('el archivo queda marcado como v9', d.version === 9, 'version=' + d.version);
+}
+
+/* --- 2k. De v8 a v9: los eventos --------------------------------------------
+
+   Un archivo anterior no trae la lista, y sin ella el calendario reventaría al
+   leer events.filter. Y un evento a medias no puede quedarse: un aviso con una
+   hora inventada es peor que ningún aviso. */
+{
+  const dir = carpetaLimpia();
+  escribir(dir, {
+    version: 8,
+    activities: [{ id: 'a1', name: 'X', kind: 'timed' }],
+    reviews: []
+  });
+  const d = store.init(dir);
+  ok('un archivo sin eventos recibe la lista vacía', Array.isArray(d.events) && d.events.length === 0);
+  ok('y queda marcado como v9', d.version === 9, 'version=' + d.version);
+}
+
+{
+  const dir = carpetaLimpia();
+  escribir(dir, {
+    version: 9,
+    activities: [{ id: 'a1', name: 'X', kind: 'timed' }],
+    reviews: [],
+    events: [
+      { id: 'ev1', date: '2026-09-20', time: '16:30', title: 'Entrega', avisarMin: 60 },
+      // Hora imposible: se queda como evento de todo el día, no se tira.
+      { id: 'ev2', date: '2026-09-21', time: '99:99', title: 'Reunión', avisarMin: 3 },
+      // Antelación absurda: se recorta a una semana.
+      { id: 'ev3', date: '2026-09-22', time: '', title: 'Examen', avisarMin: 999999 },
+      // Sin fecha usable o sin título no se puede ni pintar ni avisar.
+      { id: 'ev4', date: 'mañana', title: 'Sin fecha' },
+      { id: 'ev5', date: '2026-09-23', title: '   ' }
+    ]
+  });
+  const d = store.init(dir);
+  const id = (x) => d.events.find((e) => e.id === x);
+  ok('un evento bien formado se conserva entero',
+     !!id('ev1') && id('ev1').time === '16:30' && id('ev1').avisarMin === 60);
+  ok('una hora imposible lo deja de todo el día, no lo borra',
+     !!id('ev2') && id('ev2').time === '', 'time=' + (id('ev2') || {}).time);
+  ok('una antelación absurda se recorta a una semana',
+     !!id('ev3') && id('ev3').avisarMin === 10080, 'min=' + (id('ev3') || {}).avisarMin);
+  ok('sin fecha usable se descarta', !id('ev4'));
+  ok('sin título también', !id('ev5'));
+  ok('y el resto sobrevive', d.events.length === 3, 'quedan ' + d.events.length);
 }
 
 /* --- 2j. Un papel largo que SÍ estaba en repaso -----------------------------

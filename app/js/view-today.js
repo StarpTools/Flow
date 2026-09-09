@@ -4,6 +4,44 @@
 
   H.views = H.views || {};
 
+  /* Lo que viene. Un evento avisa solo, pero un aviso llega y se va: una
+     entrega dentro de tres días tiene que poder verse sin ir a buscarla al
+     calendario. Dos semanas de horizonte y como mucho cuatro, en una tira:
+     más que eso es una agenda, y esta pantalla es la de hoy. */
+  function tiraEventos(S) {
+    const hoy = H.dateKey();
+    const hasta = H.repaso.sumarDias(hoy, 14);
+    const evs = (S.data.events || [])
+      .filter(function (e) { return e.date >= hoy && e.date <= hasta; })
+      .sort(function (a, b) {
+        return (a.date + (a.time || '99:99')) < (b.date + (b.time || '99:99')) ? -1 : 1;
+      });
+    if (!evs.length) return '';
+
+    const manana = H.repaso.sumarDias(hoy, 1);
+    const cuando = function (e) {
+      if (e.date === hoy) return e.time ? 'Hoy ' + e.time : 'Hoy';
+      if (e.date === manana) return e.time ? 'Mañana ' + e.time : 'Mañana';
+      return H.shortDate(e.date);
+    };
+
+    const muestra = evs.slice(0, 4);
+    return (
+      '<div class="tira-eventos">' +
+      muestra.map(function (e) {
+        return (
+          '<button class="evento-pill" data-act="verEvento" data-id="' + e.id + '">' +
+          '<span class="evento-cuando">' + H.esc(cuando(e)) + '</span>' +
+          H.esc(e.title) + '</button>'
+        );
+      }).join('') +
+      (evs.length > muestra.length
+        ? '<span class="micro">+' + (evs.length - muestra.length) + ' más</span>'
+        : '') +
+      '</div>'
+    );
+  }
+
   function sessionStrip(S) {
     const d = S.data;
     const s = S.session;
@@ -371,6 +409,7 @@
         '<button class="btn sm" data-act="addManual">Registrar tiempo a mano</button>' +
         '</div>' +
 
+        tiraEventos(S) +
         sessionStrip(S) +
 
         '<div class="grid g3" style="margin-bottom:12px">' +
@@ -491,6 +530,9 @@
             break;
           case 'addManual':
             H.modals.manualSession(S);
+            break;
+          case 'verEvento':
+            H.modals.evento(S, ds.id);
             break;
 
           case 'revelar':

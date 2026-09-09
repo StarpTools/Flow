@@ -926,7 +926,10 @@ th.r {
 
 .cal {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* minmax(0,...) y no `1fr` a secas: el mínimo de `1fr` es el contenido, así
+     que un solo nombre largo ensancha su columna y deja las otras seis en un
+     dedo de ancho. Las siete miden lo mismo pase lo que pase dentro. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 1px;
   background: var(--border);
   border: 1px solid var(--border);
@@ -1010,6 +1013,63 @@ th.r {
   color: var(--accent);
 }
 
+/* La tira de lo que viene, arriba en Hoy. */
+.tira-eventos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.evento-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  padding: 4px 11px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.evento-pill:hover { border-color: var(--warn); }
+
+.evento-cuando {
+  font-size: 11px;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Un evento no es plan y no puede leerse como plan: no tiene duración, no
+   suma horas y no se cumple a medias. Por eso va en ámbar y con fondo, encima
+   de las actividades del día. */
+/* En bloque y no en flex: la hora es parte de la frase, y como ítem de flex
+   el título formaba su propia columna estrecha y salía centrado bajo ella. */
+.cal-evento {
+  display: block;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 500;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-radius: var(--r-sm);
+  padding: 2px 5px;
+  margin-bottom: 3px;
+  overflow-wrap: anywhere;
+}
+
+.cal-evento-hora {
+  margin-right: 4px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
 .cal-items {
   flex: 1;
   display: flex;
@@ -1020,24 +1080,31 @@ th.r {
 
 .cal-item {
   display: flex;
-  align-items: center;
+  /* Arriba y no centrado: el nombre puede ocupar dos o tres líneas y el punto
+     de color tiene que quedarse con la primera, no en mitad del bloque. */
+  align-items: flex-start;
   gap: 4px;
   font-size: 11px;
   color: var(--ink-2);
   line-height: 1.35;
 }
 
+.cal-item .dot { margin-top: 4px; }
+
+/* El nombre parte de línea en vez de recortarse: "Estudio Mecánica de
+   Materiales" en una celda de 150px no cabe de ninguna manera, y con puntos
+   suspensivos todos los días ponen lo mismo. La celda crece hacia abajo. */
 .cal-item-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .cal-item-time {
   color: var(--ink-4);
   font-size: 10px;
   flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .cal-foot {
@@ -1103,11 +1170,18 @@ th.r {
   justify-content: space-between;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
+/* El cuerpo es lo único que encoge y lo único que hace scroll. Sin el
+   min-height:0 su altura mínima es la de su contenido — el valor por defecto
+   en un flex — y un modal largo empuja el pie fuera de la caja: los botones de
+   Guardar y Cerrar se quedan cortados y no hay forma de terminar. */
 .modal-body {
   padding: 16px;
   overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .modal-foot {
@@ -1117,6 +1191,7 @@ th.r {
   justify-content: flex-end;
   gap: 8px;
   background: var(--bg-subtle);
+  flex-shrink: 0;
 }
 
 /* Heatmap ------------------------------------------------------------------ */
@@ -1301,6 +1376,16 @@ th.r {
   border-bottom-color: var(--border-strong);
   box-shadow: var(--shadow-pop);
 }
+
+/* El cajón de los sueltos no es un tema: se ve que es otra cosa, y apagado,
+   porque es un sitio de paso — lo normal es vaciarlo, no vivir en él. */
+.cajon.sueltos {
+  border-style: dashed;
+  border-left-color: var(--ink-4);
+  background: var(--bg-subtle);
+}
+
+.cajon.sueltos .cajon-nombre { color: var(--ink-3); }
 
 .cajon-nombre {
   font-size: var(--t-title);

@@ -22,7 +22,7 @@ const COLORES = [
 ];
 
 const DEFAULTS = {
-  version: 8,
+  version: 9,
   /* kind 'timed' -> se cronometra y se agenda en el calendario.
      kind 'daily' -> dato numérico que anotas una vez al día, sin cronómetro.
                      Dormir no se cronometra: se registra por la mañana. */
@@ -97,6 +97,14 @@ const DEFAULTS = {
        createdAt, updatedAt } */
   reviews: [],
 
+  /* Eventos. Un evento NO es plan: el plan son horas que cumples o no, y un
+     evento es un punto en el tiempo que simplemente llega — una entrega, una
+     reunión. Por eso no entra en ninguna cuenta de cumplimiento.
+
+     { id, date:'2026-09-15', time:'16:00'|'', title, note,
+       avisarMin, avisadoAt } */
+  events: [],
+
   // daily['2026-08-23']['a-sueno'] = 7.5
   daily: {},
   // restDays['2026-08-29'] = true. Un día de descanso elegido no es un hueco:
@@ -128,6 +136,10 @@ const DEFAULTS = {
     widgetEnabled: true,
     // 'system' | 'light' | 'dark'
     theme: 'system',
+    /* Flow se abre solo al iniciar sesión, escondido en el widget. Es lo que
+       convierte los avisos de los eventos en avisos de verdad: si dependen de
+       que te acuerdes de abrir la app, el día que importa no está abierta. */
+    arrancarConWindows: false,
     // { x, y, width, height } del último cierre. null = calcular por pantalla.
     windowBounds: null
   }
@@ -259,8 +271,8 @@ function sanear(d) {
   d.noteTypes.forEach((t) => {
     t.name = String(t.name).slice(0, 60);
     if (typeof t.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(t.color)) t.color = '#5b5bd6';
-    // Un apartado de un spot que ya no existe se recoge en General en vez de
-    // quedarse flotando sin ámbito, donde no se vería ni se podría borrar.
+    // Una carpeta de un tema que ya no existe se queda sin tema, y la pantalla
+    // de papeles sueltos la enseña para poder borrarla.
     if (!t.spotId || spotsVivos.indexOf(t.spotId) === -1) t.spotId = null;
   });
 
@@ -276,8 +288,8 @@ function sanear(d) {
   d.reviews.forEach((r) => {
     if (typeof r.text !== 'string') r.text = '';
 
-    // Una nota de un spot borrado se recoge en General. Sin esto se quedaría
-    // sin ámbito: ninguna vista la enseñaría y no habría forma de recuperarla.
+    // Un papel de un tema borrado se queda sin tema, y lo recoge la pantalla de
+    // papeles sueltos. Ahí se vuelve a colocar; sin ella sería irrecuperable.
     if (!r.spotId || spotsVivos.indexOf(r.spotId) === -1) r.spotId = null;
 
     /* El apartado tiene que ser del MISMO ámbito que la nota. Es la regla que
@@ -342,6 +354,21 @@ function sanear(d) {
     if (['probando', 'funciona', 'descartada'].indexOf(s.status) === -1) s.status = 'probando';
   });
 
+  /* Eventos. Se descarta por fecha y título, que es lo único sin lo que un
+     evento no se puede ni pintar ni avisar. La hora sí puede faltar: es un
+     evento de todo el día, y entonces el aviso se calcula desde las 9:00. */
+  d.events = contar(d.events, 'eventos',
+    (e) => e && e.id && esFecha(e.date) && typeof e.title === 'string' && e.title.trim());
+  d.events.forEach((e) => {
+    e.title = String(e.title).trim().slice(0, 120);
+    e.note = typeof e.note === 'string' ? e.note.slice(0, 500) : '';
+    // 'HH:MM' o nada. Una hora a medias avisaría a una hora inventada.
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(e.time || '')) e.time = '';
+    // Minutos de antelación. -1 = sin aviso; el tope es una semana.
+    e.avisarMin = Math.min(10080, Math.max(-1, Math.round(num(e.avisarMin, 0))));
+    if (typeof e.avisadoAt !== 'string') e.avisadoAt = null;
+  });
+
   // plan: fuera las fechas inválidas y los ítems sin duración utilizable.
   let planFuera = 0;
   for (const key of Object.keys(d.plan)) {
@@ -392,6 +419,10 @@ function migrate(loaded) {
   if (!out.life || typeof out.life !== 'object') out.life = {};
   if (!Array.isArray(out.paradigms)) out.paradigms = [];
   if (!Array.isArray(out.strategies)) out.strategies = [];
+
+  /* v9: los eventos. El disparador es estructural, como siempre: no tener la
+     lista. Un archivo de cualquier versión anterior entra aquí una sola vez. */
+  if (!Array.isArray(out.events)) out.events = [];
 
   if (!out.daily || typeof out.daily !== 'object') out.daily = {};
   if (!out.restDays || typeof out.restDays !== 'object') out.restDays = {};
@@ -580,7 +611,7 @@ function migrate(loaded) {
     out.settings.seededDaily = true;
   }
 
-  out.version = 8;
+  out.version = 9;
   return out;
 }
 

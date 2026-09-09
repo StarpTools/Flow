@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, nativeTheme, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, nativeTheme, Menu,
+        Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const store = require('./store');
@@ -17,6 +18,33 @@ app.disableHardwareAcceleration();
    en vez de dejar que Electron lo deduzca del package.json, para que la ruta
    no dependa de un campo que alguien podria tocar sin darse cuenta. */
 app.setName('Flow');
+
+/* Windows no enseña un aviso del sistema si no sabe de qué app viene: sin
+   esto las notificaciones de los eventos no aparecen, y encima sin error. */
+app.setAppUserModelId('com.luis.flow');
+
+/* Una sola instancia. Hace falta desde que Flow puede arrancar con la sesión
+   y quedarse escondido: sin esto, pulsar el acceso directo abriría una segunda
+   copia con los mismos datos y las dos se pisarían al guardar. La segunda
+   simplemente saca a la primera a primer plano.
+
+   Las pruebas y las capturas quedan fuera: usan su propio almacén y no deben
+   morir porque el Flow de verdad esté abierto. */
+const ENSAYO = !!(process.env.HQ_SELFTEST || process.env.HQ_SHOTS);
+if (!ENSAYO && !app.requestSingleInstanceLock()) {
+  app.quit();
+} else if (!ENSAYO) {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
+// Arrancado por Windows al iniciar sesión: se queda en el widget, sin abrir
+// la ventana grande. La idea es que avise, no que te reciba con una pantalla.
+const ARRANQUE_OCULTO = process.argv.indexOf('--oculto') !== -1;
 
 /* Las pruebas y las capturas escriben en su propio almacén. Sin esto, una
    corrida de pruebas mete datos inventados en el archivo real del usuario, que
@@ -157,6 +185,105 @@ function broadcast(tickOnly) {
     : { tick: false, data: store.get(), session: sessionView(), errorGuardado: store.getError() };
   for (const win of [mainWindow, widgetWindow]) {
     if (win && !win.isDestroyed()) win.webContents.send('state', payload);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Eventos y sus avisos
+//
+// Un evento no es plan: el plan son horas que cumples, un evento es un punto
+// en el tiempo que llega. Por eso vive aparte y no entra en ninguna cuenta.
+//
+// El aviso se decide AQUI, en el proceso principal, por lo mismo que el
+// cronometro: la ventana puede estar cerrada, y un recordatorio que solo
+// funciona con la pantalla abierta no es un recordatorio.
+// ---------------------------------------------------------------------------
+
+// Un evento sin hora se avisa tomando las 9:00 como su hora. Sin esto habria
+// que avisar a medianoche, que es cuando nadie lo va a leer.
+const HORA_SIN_HORA = '09:00';
+
+// Cuanto despues de un evento ya no tiene sentido avisar. Abrir Flow el jueves
+// no puede soltar de golpe los avisos del lunes.
+const CADUCA_MS = 6 * 60 * 60 * 1000;
+
+function momentoDe(ev) {
+  const [Y, M, D] = String(ev.date).split('-').map(Number);
+  const [h, m] = String(ev.time || HORA_SIN_HORA).split(':').map(Number);
+  return new Date(Y, M - 1, D, h, m, 0, 0).getTime();
+}
+
+function cuandoSeAvisa(ev) {
+  return momentoDe(ev) - Math.max(0, ev.avisarMin) * 60000;
+}
+
+function textoDelAviso(ev) {
+  const hoy = localDate();
+  const manana = localDate(new Date(Date.now() + 86400000));
+  const dia = ev.date === hoy ? 'Hoy' : ev.date === manana ? 'Mañana' : 'El ' + ev.date;
+  return dia + (ev.time ? ' a las ' + ev.time : '') + (ev.note ? ' · ' + ev.note : '');
+}
+
+function avisarDe(ev) {
+  if (Notification.isSupported()) {
+    const aviso = new Notification({
+      title: ev.title,
+      body: textoDelAviso(ev),
+      icon: ICONO
+    });
+    aviso.on('click', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    });
+    aviso.show();
+  }
+
+  /* Ademas del aviso del sistema, la app se hace notar como con las
+     verificaciones: el aviso de Windows se puede haber ido ya de pantalla
+     cuando vuelves al ordenador, y la barra de tareas sigue parpadeando. */
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
+    mainWindow.flashFrame(true);
+  }
+  if (widgetWindow && !widgetWindow.isDestroyed()) widgetWindow.showInactive();
+}
+
+let avisosTimer = null;
+
+function revisarAvisos() {
+  const data = store.get();
+  if (!Array.isArray(data.events) || !data.events.length) return;
+
+  const ahora = Date.now();
+  let alguno = false;
+
+  for (const ev of data.events) {
+    if (ev.avisadoAt || ev.avisarMin < 0) continue;
+    if (ahora < cuandoSeAvisa(ev)) continue;
+    // Demasiado tarde: no se avisa, y tampoco se marca. Si el evento sigue
+    // siendo futuro manana, el aviso saldra entonces.
+    if (ahora > momentoDe(ev) + CADUCA_MS) continue;
+
+    ev.avisadoAt = new Date().toISOString();
+    avisarDe(ev);
+    alguno = true;
+  }
+
+  if (alguno) {
+    store.save();
+    broadcast();
+  }
+}
+
+/* Arrancar con Windows. Solo en la app instalada: en desarrollo registraria
+   electron.exe, que al reiniciar abriria un Electron pelado sin Flow dentro. */
+function aplicarArranqueConWindows(activado) {
+  if (!app.isPackaged) return;
+  try {
+    app.setLoginItemSettings({ openAtLogin: !!activado, args: ['--oculto'] });
+  } catch (err) {
+    console.error('No se pudo cambiar el arranque automático:', err.message);
   }
 }
 
@@ -410,7 +537,16 @@ function setWidgetVisible(visible) {
 app.whenReady().then(() => {
   store.init(app.getPath('userData'));
   createMainWindow();
-  if (store.get().settings.widgetEnabled) createWidgetWindow();
+  if (ARRANQUE_OCULTO && mainWindow) mainWindow.hide();
+  if (store.get().settings.widgetEnabled || ARRANQUE_OCULTO) createWidgetWindow();
+
+  aplicarArranqueConWindows(store.get().settings.arrancarConWindows);
+
+  /* Cada medio minuto basta: el aviso mas fino que se puede pedir es de
+     minutos, y una comprobacion por segundo solo gastaria bateria. Se hace
+     una al arrancar para recuperar lo que venciera con la app cerrada. */
+  revisarAvisos();
+  avisosTimer = setInterval(revisarAvisos, 30000);
 });
 
 app.on('window-all-closed', () => {
@@ -419,6 +555,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  clearInterval(avisosTimer);
   // Una sesión abierta al cerrar se guarda igual. Perder 40 minutos de trabajo
   // registrado por cerrar la ventana seria el peor bug posible de esta app.
   if (session && session.countedSec > 0) finishSession('');
@@ -662,10 +799,11 @@ ipcMain.handle('mutate', (_e, action) => {
       data.spots = data.spots.filter((x) => x.id !== p.id);
       data.results = data.results.filter((r) => r.spotId !== p.id);
 
-      /* Los apartados del spot se van con él: eran suyos y de nadie más. Las
-         NOTAS no: se recogen en General, sin apartado. Borrar un spot no puede
-         llevarse por delante meses de apuntes — y menos ahora, que un spot
-         puede estar guardando algo que no tiene nada que ver con poker. */
+      /* Las carpetas del tema se van con él: eran suyas y de nadie más. Los
+         PAPELES no: se quedan sin tema y la pantalla "Papeles sueltos" los
+         recoge. Borrar un tema no puede llevarse por delante meses de apuntes,
+         y sin esa pantalla se quedarían en el archivo pero fuera del alcance
+         de la vista, que se recorre entrando siempre por un tema. */
       data.noteTypes = data.noteTypes.filter((t) => t.spotId !== p.id);
       data.reviews.forEach((r) => {
         if (r.spotId === p.id) { r.spotId = null; r.typeId = null; }
@@ -1075,8 +1213,69 @@ ipcMain.handle('mutate', (_e, action) => {
       break;
     }
 
+    /* --- Eventos ------------------------------------------------------
+       Una entrega, una reunion, un examen. No se cumple: llega. */
+
+    case 'event:add':
+    case 'event:update': {
+      const nuevo = action.type === 'event:add';
+      const ev = nuevo ? null : data.events.find((x) => x.id === p.id);
+      if (!nuevo && !ev) return { ok: false, error: 'Evento desconocido' };
+
+      const title = typeof p.title === 'string' ? p.title.trim() : (ev ? ev.title : '');
+      if (!title) return { ok: false, error: 'El evento necesita un título' };
+
+      const date = typeof p.date === 'string' ? p.date : (ev ? ev.date : '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return { ok: false, error: 'Fecha no válida' };
+
+      const time = typeof p.time === 'string' ? p.time.trim() : (ev ? ev.time : '');
+      if (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))
+        return { ok: false, error: 'La hora se escribe como 16:30' };
+
+      const avisar = typeof p.avisarMin !== 'undefined'
+        ? Math.min(10080, Math.max(-1, Math.round(Number(p.avisarMin) || 0)))
+        : (ev ? ev.avisarMin : 0);
+
+      const campos = {
+        title,
+        date,
+        time,
+        note: typeof p.note === 'string' ? p.note : (ev ? ev.note : ''),
+        avisarMin: avisar
+      };
+
+      if (nuevo) {
+        data.events.push(Object.assign({
+          id: uid('ev'),
+          avisadoAt: null,
+          createdAt: new Date().toISOString()
+        }, campos));
+      } else {
+        /* Cambiar cuando es o cuando avisa vuelve a armar el aviso: si no,
+           mover una reunion de las 9 a las 18 dejaria el aviso dado por las
+           9 y no sonaria nunca a la hora nueva. */
+        const movido = ev.date !== campos.date || ev.time !== campos.time ||
+                       ev.avisarMin !== campos.avisarMin;
+        Object.assign(ev, campos);
+        if (movido) ev.avisadoAt = null;
+        ev.updatedAt = new Date().toISOString();
+      }
+      break;
+    }
+
+    case 'event:remove': {
+      data.events = data.events.filter((x) => x.id !== p.id);
+      break;
+    }
+
     case 'settings:update': {
       Object.assign(data.settings, p);
+      // El arranque con Windows no es solo un dato guardado: hay que decirselo
+      // al sistema en el momento, o la casilla mentiria hasta el proximo inicio.
+      if (typeof p.arrancarConWindows !== 'undefined') {
+        aplicarArranqueConWindows(p.arrancarConWindows);
+      }
       break;
     }
 
