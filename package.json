@@ -1,0 +1,55 @@
+{
+  "name": "flow",
+  "productName": "Flow",
+  "version": "2.0.0",
+  "description": "Centro de mando para jugadores de poker: planificación, tiempo certificado y análisis de spots",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "author": "Luis",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.luis.flow",
+    "productName": "Flow",
+    "directories": {
+      "output": "dist",
+      "buildResources": "app/assets"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "store.js",
+      "selftest.js",
+      "shots.js",
+      "app/**/*",
+      "widget/**/*",
+      "README.md"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "app/assets/flow.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Flow",
+      "artifactName": "Flow-${version}-instalador.${ext}"
+    }
+  }
+}

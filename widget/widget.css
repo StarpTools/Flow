@@ -1,0 +1,153 @@
+/* Widget flotante. Hereda los tokens de app/styles.css. */
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  /* Toda la superficie arrastra la ventana; los controles se excluyen abajo. */
+  -webkit-app-region: drag;
+  user-select: none;
+  cursor: default;
+}
+
+button,
+input,
+select {
+  -webkit-app-region: no-drag;
+}
+
+.w {
+  height: 100vh;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(16, 24, 40, 0.14);
+  padding: 11px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.w.alert {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.w.running {
+  border-color: var(--accent-border);
+}
+
+.w-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 17px;
+}
+
+.w-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.w-mark {
+  width: 13px;
+  height: 13px;
+  display: block;
+  flex-shrink: 0;
+  -webkit-user-drag: none;
+  /* Es el atajo a la ventana grande, no un adorno. */
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 2px;
+  margin: -2px;
+  transition: background 0.12s;
+}
+
+.w-mark:hover {
+  background: var(--bg-hover);
+}
+
+.w-sub {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.w-mid {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+}
+
+.w-time {
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  flex: 1;
+}
+
+.w-time.idle {
+  color: var(--ink-4);
+}
+
+.w-ask {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--ink);
+  flex: 1;
+}
+
+.w-foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
+.w-meter {
+  height: 3px;
+  background: var(--bg-sunken);
+  border-radius: 2px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.w-meter i {
+  display: block;
+  height: 100%;
+  background: var(--pos);
+  border-radius: 2px;
+}
+
+.w .btn {
+  font-size: 11px;
+  padding: 5px 9px;
+}
+
+.pulse {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}

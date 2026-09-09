@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; img-src 'self' data:;">
+<title>Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
+<link rel="icon" type="image/png" sizes="256x256" href="assets/icon-256.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="brand">
+      <img class="brand-logo brand-light"
+           src="assets/logo.png"
+           srcset="assets/logo.png 2x, assets/logo@3x.png 3x"
+           alt="Flow">
+      <img class="brand-logo brand-dark"
+           src="assets/logo-dark.png"
+           srcset="assets/logo-dark.png 2x, assets/logo-dark@3x.png 3x"
+           alt="Flow">
+    </div>
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-view="today">Hoy</button>
+      <button class="tab" data-view="planner">Planificar</button>
+      <button class="tab" data-view="dashboard">Dashboard</button>
+      <button class="tab" data-view="estudio">Estudio</button>
+      <button class="tab" data-view="life">Life</button>
+    </nav>
+    <div class="topbar-right">
+      <span class="micro" id="liveIndicator"></span>
+      <button class="btn sm ghost" id="btnWidget">Widget</button>
+      <button class="btn sm ghost" id="btnSettings">Ajustes</button>
+    </div>
+  </div>
+
+  <!-- Aviso de que los datos NO se están guardando. Oculto salvo emergencia. -->
+  <div id="avisoGuardado" class="hidden" role="alert"
+       style="padding:10px 20px;background:var(--neg-soft);border-bottom:1px solid var(--neg);
+              color:var(--neg);font-size:12.5px;font-weight:500;flex-shrink:0"></div>
+
+  <div class="content">
+    <div class="page" id="view"></div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+
+<script src="js/util.js"></script>
+<script src="js/repaso.js"></script>
+<script src="js/notas.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/state.js"></script>
+<script src="js/view-today.js"></script>
+<script src="js/view-planner.js"></script>
+<script src="js/view-dashboard.js"></script>
+<script src="js/view-estudio.js"></script>
+<script src="js/view-life.js"></script>
+<script src="js/export.js"></script>
+<script src="js/modals.js"></script>
+<script src="js/boot.js"></script>
+</body>
+</html>

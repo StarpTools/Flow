@@ -1,0 +1,20 @@
+# Dependencias: se reinstalan con "npm install", no se guardan (253 MB).
+node_modules/
+
+# Capturas generadas por HQ_SHOTS=1: se regeneran cuando hagan falta.
+shots/
+
+# Artefactos de marca generados por tools/logos.js a partir de los PNG
+# originales. Los originales SÍ se guardan; lo derivado no.
+app/assets/icon-*.png
+app/assets/logo.png
+app/assets/logo@3x.png
+app/assets/logo-dark.png
+app/assets/logo-dark@3x.png
+app/assets/icon.png
+app/assets/flow.ico
+
+# Nada de datos personales en el repositorio: viven en %APPDATA%\Flow.
+*.log
+flow-data*.json
+dist/
