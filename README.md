@@ -483,8 +483,8 @@ HQ_SELFTEST=1 ./dist/win-unpacked/Flow.exe
 ## Desarrollo
 
 ```bash
-HQ_SELFTEST=1 npm start        # prueba de humo (~60s, 181 comprobaciones)
-HQ_SELFTEST=2 npm start        # + verificaciones contra el reloj real (~4min, 192)
+HQ_SELFTEST=1 npm start        # prueba de humo (~60s, 191 comprobaciones)
+HQ_SELFTEST=2 npm start        # + verificaciones contra el reloj real (~4min, 202)
 node tools/prueba-repaso.js    # algoritmo de repaso espaciado (30)
 node tools/prueba-notas.js     # formato de las notas y las fórmulas (150)
 node tools/prueba-datos.js     # resistencia del archivo de datos (79)

@@ -906,6 +906,10 @@
           done();
         });
 
+        o.querySelectorAll('[data-close]').forEach(function (b) {
+          b.addEventListener('click', done);
+        });
+
         name.addEventListener('keydown', function (e) {
           if (e.key === 'Enter') o.querySelector('#arSave').click();
         });
@@ -1018,6 +1022,10 @@
           });
         }
 
+        o.querySelectorAll('[data-close]').forEach(function (b) {
+          b.addEventListener('click', done);
+        });
+
         name.addEventListener('keydown', function (e) {
           if (e.key === 'Enter') o.querySelector('#ntSave').click();
         });
@@ -1109,6 +1117,89 @@
   /* Renombrar una imagen. El nombre importa más de lo que parece: es por lo
      que se enlaza desde el texto con [[nombre]], así que cambiarlo deja
      colgados los enlaces que ya hubiera escritos. Se avisa. */
+  /* Un [[enlace]] que no encuentra su imagen.
+
+     Casi siempre la imagen SI esta en el papel y lo que no cuadra es el
+     nombre: pegas una captura, se guarda como "captura", y escribes
+     [[imagen]]. Antes esto era un aviso y un callejon sin salida — la imagen
+     entera al lado, y la app diciendo que no existe. Aqui se ensena lo que hay
+     y se arregla de un clic, sin tocar el texto. */
+  M.enlaceRoto = function (S, papel, nombre) {
+    const imgs = papel.imagenes || [];
+
+    const lista = imgs.length
+      ? imgs.map(function (im) {
+          return (
+            '<div class="row" style="gap:10px;align-items:center;padding:6px 0;' +
+            'border-top:1px solid var(--border-hair)">' +
+            '<img class="enlace-roto-mini" data-mini="' + im.id + '" alt="">' +
+            '<div class="grow">' + H.esc(im.nombre) + '</div>' +
+            '<button class="btn sm" data-usar="' + im.id + '">Es esta</button></div>'
+          );
+        }).join('')
+      : '<div class="micro" style="margin-top:10px">Este papel no tiene ninguna ' +
+        'imagen todavia. Pega una captura con Ctrl+V o pulsa A' + String.fromCharCode(241) +
+        'adir en el panel de la derecha: el enlace se escribe solo.</div>';
+
+    open(
+      '<div class="modal"><div class="modal-head">' +
+      '<h2>El enlace no encuentra su imagen</h2>' +
+      '<button class="icon-btn" data-close>' + String.fromCharCode(215) + '</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="micro">El texto dice <code>[[' + H.esc(nombre) + ']]</code> y ' +
+      'ninguna imagen de este papel se llama asi. ' +
+      (imgs.length ? 'Si es una de estas, dilo y le pongo ese nombre:' : '') +
+      '</div>' +
+      lista +
+      '<div class="micro" id="erErr" style="margin-top:10px;color:var(--neg)"></div>' +
+      '</div><div class="modal-foot">' +
+      '<button class="btn danger" id="erQuitar" style="margin-right:auto">' +
+      'Quitar el enlace</button>' +
+      '<button class="btn" data-close>Cerrar</button></div></div>',
+
+      function (o, done) {
+        const err = o.querySelector('#erErr');
+
+        /* Las miniaturas se piden despues de abrir: el modal tiene que estar en
+           pantalla ya, aunque los archivos tarden en leerse del disco. */
+        imgs.forEach(async function (im) {
+          const res = await window.hq.imagen.leer(papel.id, im.id);
+          if (!res || !res.ok) return;
+          const n = o.querySelector('[data-mini="' + im.id + '"]');
+          if (n) n.src = res.dataUrl;
+        });
+
+        o.addEventListener('click', async function (e) {
+          const b = e.target.closest('[data-usar]');
+          if (!b) return;
+          const res = await S.mutate('image:rename', {
+            notaId: papel.id, id: b.getAttribute('data-usar'), nombre: nombre });
+          if (res && !res.ok) { err.textContent = res.error || 'No se pudo'; return; }
+          done();
+          S.ui.imgVer = b.getAttribute('data-usar');
+          S.pausarRender = false;
+          S.render();
+        });
+
+        o.querySelector('#erQuitar').addEventListener('click', async function () {
+          // Se quita del texto la marca entera, no solo su nombre.
+          const limpio = String(papel.text || '')
+            .split('[[' + nombre + ']]').join('')
+            .replace(/[ ]{2,}/g, ' ');
+          await S.mutate('review:update', { id: papel.id, text: limpio });
+          done();
+          S.pausarRender = false;
+          S.ui.papelDraft = null;
+          S.render();
+        });
+
+        o.querySelectorAll('[data-close]').forEach(function (b) {
+          b.addEventListener('click', done);
+        });
+      }
+    );
+  };
+
   M.renombrarImagen = function (S, papel, imagen) {
     const citada = H.notas.imagenesCitadas(papel.text)
       .some(function (n) { return n.toLowerCase() === imagen.nombre.toLowerCase(); });

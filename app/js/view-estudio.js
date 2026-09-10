@@ -824,6 +824,35 @@
     if (cargando) cargando.remove();
   }
 
+  /* Escribe el [[enlace]] en el texto, en el sitio donde estaba el cursor.
+
+     Se hace SOLO al anadir la imagen, y por el fallo que evita: hasta ahora
+     pegabas una captura, se guardaba con su nombre ("captura") y el texto no
+     se enteraba. Escribias [[imagen]] a mano, no coincidia con ningun nombre,
+     y al pulsarlo salia un aviso diciendo que no existe — con la imagen ahi
+     al lado, guardada y entera. El enlace lo pone quien sabe el nombre. */
+  function enlazar(S, nombre) {
+    const marca = '[[' + nombre + ']]';
+    const ta = H.el('papelCuerpo');
+
+    if (ta) {
+      aplicar(S, function (t, a, b) {
+        const antes = t.slice(0, a);
+        // Sin pegarlo a la palabra anterior: [[x]] pegado a un punto se lee mal.
+        const sep = !antes || /\s$/.test(antes) ? '' : ' ';
+        const cursor = a + sep.length + marca.length;
+        return { texto: antes + sep + marca + t.slice(b), desde: cursor, hasta: cursor };
+      });
+      return;
+    }
+
+    // En modo lectura no hay textarea: se anade al final de la teoria.
+    const papel = papelAbierto(S);
+    if (!papel) return;
+    const t = papel.text || '';
+    S.mutate('review:update', { id: papel.id, text: t + (t ? '\n\n' : '') + marca });
+  }
+
   async function pegarDataUrl(S, papel, nombre, dataUrl) {
     const res = await window.hq.imagen.pegar(papel.id, nombre, dataUrl);
     if (!res || !res.ok) {
@@ -832,6 +861,9 @@
     }
     if (res.data) S.data = res.data;
     S.ui.imgVer = res.imagen.id;
+    // El nombre lo decide el proceso principal (puede venir con un 2 detras si
+    // ya habia otra igual), asi que el enlace se escribe con el que devuelve.
+    enlazar(S, res.imagen.nombre);
     repintar(S);
   }
 
@@ -1220,9 +1252,10 @@
             return x.nombre.toLowerCase() === String(ds.nombre || '').toLowerCase();
           });
           if (!im) {
-            H.modals.alert('No hay ninguna imagen así',
-              'Este papel no tiene ninguna imagen llamada "' + ds.nombre + '". ' +
-              'Añádela en el panel de la derecha y ponle ese nombre.');
+            /* Antes esto era un aviso y un callejon sin salida. Casi siempre la
+               imagen SI esta en el papel y lo que no cuadra es el nombre, asi
+               que se ensenan las que hay y se arregla de un clic. */
+            H.modals.enlaceRoto(S, papel, ds.nombre);
             return;
           }
           S.ui.imgVer = im.id;
@@ -1240,6 +1273,7 @@
             }
             if (res.data) S.data = res.data;
             S.ui.imgVer = res.imagen.id;
+            enlazar(S, res.imagen.nombre);
             repintar(S);
           })();
           break;

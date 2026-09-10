@@ -31,7 +31,10 @@ ninguna pantalla — sigue en el archivo y parece borrado. Dos reglas de ahí:
   la cabecera; sin él su modal no tenía puerta y era de solo lectura.
 
 Las imágenes viven sueltas en `<datos>/imagenes/`, se enlazan desde el texto
-con `[[nombre]]` y se leen bajo demanda como data URL (la CSP sigue cerrada:
+con `[[nombre]]` — y el enlace lo escribe la app al pegarlas, no tú: escribirlo
+a mano era acertar un nombre que no habías visto ("captura"), y fallar dejaba
+un aviso sin salida con la imagen entera al lado. Un enlace que no cuadra abre
+el modal que enseña las imágenes del papel y lo repara de un clic — y se leen bajo demanda como data URL (la CSP sigue cerrada:
 solo `self` y `data:`). El panel de la derecha se ensancha y tiene tamaño real,
 pero nunca se pone encima del texto: la teoría conserva 400px como mínimo.
 
@@ -106,9 +109,9 @@ Key routing rules:
 
 ## Pruebas
 
-Cuatro suites, 440 comprobaciones en total:
+Cuatro suites, 450 comprobaciones en total:
 
-- `HQ_SELFTEST=1 npm start` — app completa (181) · `HQ_SELFTEST=2` (192, incluye
+- `HQ_SELFTEST=1 npm start` — app completa (191) · `HQ_SELFTEST=2` (202, incluye
   verificaciones contra el reloj real). Escriben en un almacén temporal aparte,
   nunca en los datos reales del usuario.
 - `node tools/prueba-repaso.js` — algoritmo SM-2 (30), sin interfaz.

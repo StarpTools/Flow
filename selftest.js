@@ -455,6 +455,60 @@ const SCRIPT = `(async () => {
     const carpetaId = S.data.noteTypes[S.data.noteTypes.length - 1].id;
     ok('la carpeta pertenece al tema', S.data.noteTypes[S.data.noteTypes.length - 1].spotId === tema.id);
 
+    /* --- Todos los modales se pueden cerrar --------------------------------
+       El de carpeta se abria y no habia forma de salir: ni la X ni Cancelar
+       estaban enganchados a nada, y solo se sale guardando o borrando. No es
+       un fallo de ese modal, es olvidar una linea que hay que repetir en cada
+       uno, asi que se comprueban todos de una pasada. */
+    const abrirModales = [
+      ['carpeta (editar)', function () { window.H.modals.notaTipo(S, carpetaId); }],
+      ['carpeta (nueva)', function () { window.H.modals.notaTipo(S, null, tema.id); }],
+      ['tema', function () { window.H.modals.spot(S, tema.id); }],
+      ['estante', function () { window.H.modals.spotGroup(S, estanteId); }],
+      ['ambito de Life', function () { window.H.modals.area(S, S.data.areas[0].id); }],
+      ['actividades', function () { window.H.modals.activities(S); }],
+      ['ajustes', function () { window.H.modals.settings(S); }],
+      ['tiempo a mano', function () { window.H.modals.manualSession(S); }],
+      ['evento', function () { window.H.modals.evento(S, null, window.H.dateKey()); }],
+      ['dia del plan', function () { window.H.modals.planDay(S, window.H.dateKey()); }]
+    ];
+
+    let cierranTodos = true;
+    let noCierran = '';
+    for (const [nombreModal, abrirModal] of abrirModales) {
+      abrirModal();
+      await wait(170);
+      const botones = document.querySelectorAll('#modalRoot [data-close]');
+      if (!document.querySelector('#modalRoot .modal') || !botones.length) {
+        cierranTodos = false;
+        noCierran += nombreModal + ' (no abre) ';
+        window.H.modals.close();
+        await wait(120);
+        continue;
+      }
+      // El ultimo suele ser Cancelar, que es por donde sale la gente.
+      botones[botones.length - 1].click();
+      await wait(170);
+      if (document.querySelector('#modalRoot .modal')) {
+        cierranTodos = false;
+        noCierran += nombreModal + ' ';
+        window.H.modals.close();
+        await wait(120);
+      }
+    }
+    ok('los diez modales se cierran con su boton', cierranTodos,
+       noCierran || 'todos');
+
+    window.H.modals.notaTipo(S, carpetaId);
+    await wait(170);
+    const equis = document.querySelector('#modalRoot .icon-btn[data-close]');
+    ok('la carpeta tiene su X arriba', !!equis);
+    if (equis) equis.click();
+    await wait(170);
+    ok('y la X tambien la cierra', !document.querySelector('#modalRoot .modal'));
+    window.H.modals.close();
+    await wait(120);
+
     // Un papel: teoría, sin tarjetas todavía.
     const teoria = '## Deshacer cosas\\n\\n' +
       'reset mueve el puntero, revert crea un commit nuevo.\\n\\n' +
@@ -700,11 +754,81 @@ const SCRIPT = `(async () => {
     ok('los dos controles vuelven atrás',
        S.ui.imgReal === false && S.ui.imgAncho === 'normal');
 
+    /* --- El enlace de una imagen no puede depender de acertar el nombre ----
+       Pegabas una captura, se guardaba como "captura", el texto no se enteraba
+       y escribias [[imagen]] a mano. Al pulsarlo: "no hay ninguna imagen asi",
+       con la imagen entera al lado. Dos arreglos: el enlace se escribe solo al
+       pegar, y si aun asi no cuadra, se arregla desde el propio aviso. */
+    S.ui.papelVista = 'escribir';
+    S.ui.estPapel = papel.id;
+    S.ui.papelDraft = null;
+    S.pausarRender = false;
+    S.setView('estudio');
+    await wait(280);
+
+    const taImg = document.getElementById('papelCuerpo');
+    ok('el editor esta abierto para pegar', !!taImg);
+    taImg.value = 'Teoria previa.';
+    taImg.setSelectionRange(taImg.value.length, taImg.value.length);
+    taImg.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(150);
+
+    // Se pega de verdad: un PNG en el portapapeles, como una captura.
+    const bytes = Uint8Array.from(
+      atob(PNG.slice(PNG.indexOf(',') + 1)), (c) => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'captura.png', { type: 'image/png' }));
+    taImg.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+    await wait(600);
+
+    const trasPegar = S.data.reviews.find((r) => r.id === papel.id);
+    const pegada = trasPegar.imagenes[trasPegar.imagenes.length - 1];
+    ok('pegar una captura la guarda en el papel',
+       trasPegar.imagenes.length === 3, trasPegar.imagenes.length + ' imagenes');
+    ok('y escribe el enlace solo, con el nombre que le toco',
+       (document.getElementById('papelCuerpo') || {}).value
+         .indexOf('[[' + pegada.nombre + ']]') !== -1,
+       (document.getElementById('papelCuerpo') || {}).value);
+
+    /* Y el enlace que ya estaba mal escrito: se arregla desde el aviso, sin
+       tener que adivinar el nombre ni volver a pegar la imagen. */
+    await S.mutate('review:update',
+      { id: papel.id, text: 'Mira el [[imagen]] de la seccion.' });
+    S.ui.papelDraft = null;
+    S.ui.papelVista = 'ver';
+    S.pausarRender = false;
+    S.render();
+    await wait(300);
+
+    const roto = document.querySelector('#view .nota-img');
+    ok('un enlace que no existe sigue siendo pulsable', !!roto);
+    roto.click();
+    await wait(300);
+    ok('y al pulsarlo ofrece las imagenes que SI tiene el papel',
+       !!document.querySelector('#modalRoot [data-usar]'),
+       document.querySelectorAll('#modalRoot [data-usar]').length + ' opciones');
+
+    document.querySelector('#modalRoot [data-usar]').click();
+    await wait(320);
+    const arreglado = S.data.reviews.find((r) => r.id === papel.id);
+    ok('elegir una le pone el nombre del enlace y lo repara',
+       arreglado.imagenes.some((x) => x.nombre === 'imagen'),
+       arreglado.imagenes.map((x) => x.nombre).join(' | '));
+    ok('y el aviso se cierra solo', !document.querySelector('#modalRoot .modal'));
+
+    S.ui.papelVista = 'escribir';
+    S.ui.papelDraft = null;
+    S.pausarRender = false;
+
     // Borrar la imagen se lleva su archivo, no solo la ficha.
+    const antesBorrar = S.data.reviews.find((r) => r.id === papel.id).imagenes.length;
     const borr = await window.hq.imagen.borrar(papel.id, dosImg[1].id);
     if (borr.data) S.data = borr.data;
+    // Relativo y no un numero fijo: cuantas imagenes hay depende de lo que
+    // hayan dejado las comprobaciones de arriba.
     ok('borrar una imagen la quita del papel',
-       S.data.reviews.find((r) => r.id === papel.id).imagenes.length === 1);
+       S.data.reviews.find((r) => r.id === papel.id).imagenes.length === antesBorrar - 1,
+       antesBorrar + ' -> ' + S.data.reviews.find((r) => r.id === papel.id).imagenes.length);
     const traLeer = await window.hq.imagen.leer(papel.id, dosImg[1].id);
     ok('y ya no se puede leer', !traLeer.ok);
 
@@ -1037,6 +1161,12 @@ const SCRIPT = `(async () => {
     await S.mutate('event:add',
       { title: 'Cita de prueba', date: hoyKey, time: '12:00', avisarMin: -1 });
 
+    /* Una actividad solo para esto. Con una del relleno, que el dia siguiente
+       al tramo la tenga o no depende del dia del mes en que corras la prueba:
+       la comprobacion pasaba o fallaba segun la fecha. */
+    await S.mutate('activity:add', { name: 'Prueba de tramo', kind: 'timed' });
+    const actAgenda = S.data.activities[S.data.activities.length - 1];
+
     S.setView('planner');
     await wait(260);
     window.H.modals.planDay(S, hoyKey);
@@ -1069,7 +1199,6 @@ const SCRIPT = `(async () => {
     ok('y el botón dice a cuántos días va',
        btnAgregar.textContent.indexOf('7 días') !== -1, btnAgregar.textContent);
 
-    const actAgenda = window.H.timedActs(S.data)[0];
     document.getElementById('pAct').value = actAgenda.id;
     const antesPlan = Object.keys(S.data.plan).length;
     btnAgregar.click();
@@ -1090,6 +1219,7 @@ const SCRIPT = `(async () => {
     for (let i = 0; i <= 6; i++) {
       await S.mutate('plan:clearDay', { date: window.H.repaso.sumarDias(hoyKey, i) });
     }
+    await S.mutate('activity:remove', { id: actAgenda.id });
     for (const e of S.data.events.slice()) await S.mutate('event:remove', { id: e.id });
 
     /* --- Eventos: lo que no se cumple, llega -------------------------------

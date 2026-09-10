@@ -1194,6 +1194,15 @@ th.r {
   flex-shrink: 0;
 }
 
+.enlace-roto-mini {
+  width: 54px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  flex-shrink: 0;
+}
+
 /* Formulas -----------------------------------------------------------------
 
    Sin dependencias: subindices, superindices, fracciones apiladas y raices
