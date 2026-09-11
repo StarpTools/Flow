@@ -627,6 +627,140 @@ function escribir(dir, obj) {
      store.getError() !== null && typeof store.getError().mensaje === 'string',
      store.getError() ? store.getError().mensaje.slice(0, 48) : 'sin mensaje');
 }
+/* --- La capa de proteccion contra perder datos ------------------------------
+
+   Un archivo con anos de apuntes dentro. Lo que se prueba aqui no es que la
+   app funcione: es que cuando algo va mal, lo escrito siga estando. */
+
+/* 3a. La rotacion cubre tiempo, no numero de archivos.
+
+   Contando archivos, abrir Flow cinco veces seguidas gastaba las cinco plazas
+   en el mismo minuto y se llevaba por delante la profundidad entera. Paso de
+   verdad: tres copias identicas hechas en 17 segundos. */
+{
+  const nombres = [];
+  for (const dia of ['01','02','03','04','05','06','07','08','09','10']) {
+    nombres.push('flow-data.respaldo-2026-09-' + dia + '-10-00-00.json');
+  }
+  nombres.push('flow-data.respaldo-2026-09-10-10-05-00.json');
+  nombres.push('flow-data.respaldo-2026-09-10-10-06-00.json');
+
+  const quedan = store.cualesSeQuedan(nombres);
+  ok('la rotacion guarda una copia por dia y las ultimas', quedan.size === 9, quedan.size);
+  ok('y el dia mas viejo cabe dentro de la semana',
+     quedan.has('flow-data.respaldo-2026-09-04-10-00-00.json') &&
+     !quedan.has('flow-data.respaldo-2026-09-03-10-00-00.json'));
+  ok('las tres ultimas se quedan pase lo que pase',
+     quedan.has('flow-data.respaldo-2026-09-10-10-06-00.json') &&
+     quedan.has('flow-data.respaldo-2026-09-10-10-05-00.json'));
+}
+
+/* 3b. Abrir la app sin tocar nada no gasta una copia. */
+{
+  const dir = carpetaLimpia();
+  store.init(dir);
+  store.get().reviews.push({ id: 'r1', title: 'Clase 1', text: 'algo', typeId: null,
+    spotId: null, imagenes: [], tarjetas: [], createdAt: '', updatedAt: '' });
+  store.flush();
+
+  const copias = () => fs.readdirSync(dir).filter((f) => f.indexOf('flow-data.respaldo-') === 0);
+
+  store.init(dir);
+  const tras1 = copias().length;
+  ok('al abrir con datos nuevos se hace una copia', tras1 === 1, tras1);
+
+  store.init(dir);
+  store.init(dir);
+  ok('abrir tres veces sin cambiar nada NO gasta tres copias',
+     copias().length === 1, copias().length + ' copias');
+
+  store.get().reviews.push({ id: 'r2', title: 'Clase 2', text: 'mas', typeId: null,
+    spotId: null, imagenes: [], tarjetas: [], createdAt: '', updatedAt: '' });
+  store.flush();
+  store.init(dir);
+  ok('pero si cambia algo, si', copias().length === 2, copias().length + ' copias');
+}
+
+/* 3c. Cada guardado deja su fecha DENTRO del archivo. Es lo unico que
+   sobrevive a una copia: la fecha del sistema de archivos la conserva
+   cualquier copiador y no dice nada de cuando se escribio el contenido. */
+{
+  const dir = carpetaLimpia();
+  store.init(dir);
+  store.flush();
+  const d = JSON.parse(fs.readFileSync(path.join(dir, 'flow-data.json'), 'utf8'));
+  ok('el archivo guarda cuando se guardo',
+     typeof d.settings.ultimoGuardado === 'string' && d.settings.ultimoGuardado.length > 10,
+     d.settings.ultimoGuardado);
+}
+
+/* 3d. El retroceso: alguien sustituye el archivo por una copia vieja.
+
+   Ha pasado dos veces. La app cargaba tan tranquila y se seguia trabajando
+   sobre un archivo al que le faltaban dias. */
+{
+  const dir = carpetaLimpia();
+  const archivo = path.join(dir, 'flow-data.json');
+
+  store.init(dir);
+  store.get().reviews.push({ id: 'viejo', title: 'Lo de antes', text: 'x', typeId: null,
+    spotId: null, imagenes: [], tarjetas: [], createdAt: '', updatedAt: '' });
+  store.flush();
+  const copiaVieja = fs.readFileSync(archivo);      // el archivo de "hace dias"
+
+  // Pasa el tiempo y se trabaja: mas papeles, otro guardado.
+  store.init(dir);
+  store.get().reviews.push({ id: 'nuevo', title: 'Lo de ayer', text: 'y', typeId: null,
+    spotId: null, imagenes: [], tarjetas: [], createdAt: '', updatedAt: '' });
+  store.get().settings.ultimoGuardado = '2030-01-01T00:00:00.000Z';
+  fs.writeFileSync(archivo, JSON.stringify(store.get(), null, 2), 'utf8');
+
+  // Al abrir se respalda ESE archivo, el bueno.
+  store.init(dir);
+
+  // Y ahora alguien pega encima la copia vieja.
+  fs.writeFileSync(archivo, copiaVieja);
+  const d = store.init(dir);
+
+  ok('se detecta que el archivo abierto es anterior al ultimo guardado',
+     !!d._retroceso, JSON.stringify(d._retroceso));
+  ok('y el aviso dice de cuando es la copia buena',
+     d._retroceso && d._retroceso.copia === '2030-01-01T00:00:00.000Z',
+     d._retroceso && d._retroceso.copia);
+}
+
+/* 3e. Restaurar desde dentro de la app, sin copiar archivos a mano por el
+   Explorador — que es la maniobra que ya ha destruido datos dos veces. */
+{
+  const dir = carpetaLimpia();
+  store.init(dir);
+  store.get().reviews.push({ id: 'a', title: 'Con mis apuntes', text: 'largo', typeId: null,
+    spotId: null, imagenes: [], tarjetas: [], createdAt: '', updatedAt: '' });
+  store.flush();
+  store.init(dir);                       // deja una copia con ese papel dentro
+
+  // Se borra todo por error y se guarda el estropicio.
+  store.get().reviews = [];
+  store.flush();
+  ok('el papel ya no esta', store.get().reviews.length === 0);
+
+  const copias = store.respaldos();
+  ok('la copia se puede listar con lo que lleva dentro',
+     copias.length >= 1 && copias[0].papeles === 1,
+     copias.length + ' copias, la primera con ' + (copias[0] || {}).papeles);
+
+  const antes = fs.readdirSync(dir).filter((f) => f.indexOf('flow-data.respaldo-') === 0).length;
+  const res = store.restaurar(copias[0].ruta);
+  ok('restaurar devuelve el papel', res.ok && store.get().reviews.length === 1,
+     JSON.stringify(res));
+  ok('y antes de pisar nada guarda lo que habia',
+     fs.readdirSync(dir).filter((f) => f.indexOf('flow-data.respaldo-') === 0).length > antes);
+
+  const mala = store.restaurar(path.join(dir, 'no-existe.json'));
+  ok('restaurar algo que no se puede leer no toca el archivo vivo',
+     !mala.ok && store.get().reviews.length === 1);
+}
+
 
 console.log('\n===== ' + (fallan === 0
   ? 'TODO OK (' + pasan + ' comprobaciones)'

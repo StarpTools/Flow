@@ -189,6 +189,64 @@ function broadcast(tickOnly) {
 }
 
 // ---------------------------------------------------------------------------
+// Copia completa fuera de la carpeta de datos
+//
+// Los respaldos que hace el almacen viven AL LADO del archivo: protegen de un
+// borrado dentro de la app, no de que se pierda la carpeta o el disco. Y solo
+// copian el JSON: las imagenes no las cubre nadie. Esta copia se lleva las dos
+// cosas a donde tu digas.
+// ---------------------------------------------------------------------------
+
+function fechaCarpeta(d) {
+  const n = (x) => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + n(d.getMonth() + 1) + '-' + n(d.getDate());
+}
+
+function copiarCarpeta(desde, hasta) {
+  if (!fs.existsSync(desde)) return 0;
+  fs.mkdirSync(hasta, { recursive: true });
+  let n = 0;
+  for (const f of fs.readdirSync(desde)) {
+    const o = path.join(desde, f);
+    if (fs.statSync(o).isDirectory()) continue;
+    fs.copyFileSync(o, path.join(hasta, f));
+    n++;
+  }
+  return n;
+}
+
+function copiaCompleta(destino) {
+  if (!destino) return { ok: false, error: 'No hay carpeta elegida' };
+  try {
+    const carpeta = path.join(destino, 'flow-respaldo-' + fechaCarpeta(new Date()));
+    fs.mkdirSync(carpeta, { recursive: true });
+
+    // El archivo se guarda ANTES de copiarlo: si no, la copia se lleva el
+    // estado de hace un rato y lo escrito en esta sesion no entra.
+    store.flush();
+    fs.copyFileSync(store.getFilePath(), path.join(carpeta, 'flow-data.json'));
+    const imgs = copiarCarpeta(carpetaImagenes(), path.join(carpeta, 'imagenes'));
+
+    const ahora = new Date().toISOString();
+    store.get().settings.ultimaCopiaExterna = ahora;
+    store.save();
+    return { ok: true, carpeta: carpeta, imagenes: imgs, cuando: ahora };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// Una al dia, al arrancar. Si ya hay copia de hoy no se repite: abrir Flow
+// cinco veces no tiene por que copiar cinco veces los mismos megas.
+function copiaDiaria() {
+  const st = store.get().settings;
+  if (!st.carpetaRespaldo) return;
+  if (String(st.ultimaCopiaExterna || '').slice(0, 10) === new Date().toISOString().slice(0, 10)) return;
+  const res = copiaCompleta(st.carpetaRespaldo);
+  if (!res.ok) console.error('Copia diaria fallida:', res.error);
+}
+
+// ---------------------------------------------------------------------------
 // Eventos y sus avisos
 //
 // Un evento no es plan: el plan son horas que cumples, un evento es un punto
@@ -541,6 +599,7 @@ app.whenReady().then(() => {
   if (store.get().settings.widgetEnabled || ARRANQUE_OCULTO) createWidgetWindow();
 
   aplicarArranqueConWindows(store.get().settings.arrancarConWindows);
+  copiaDiaria();
 
   /* Cada medio minuto basta: el aviso mas fino que se puede pedir es de
      minutos, y una comprobacion por segundo solo gastaria bateria. Se hace
@@ -1291,6 +1350,40 @@ ipcMain.handle('mutate', (_e, action) => {
 });
 
 // --- Ventanas -------------------------------------------------------------
+
+// --- Copias de seguridad ---------------------------------------------------
+
+ipcMain.handle('respaldo:listar', () => ({ ok: true, copias: store.respaldos() }));
+
+ipcMain.handle('respaldo:elegirCarpeta', async () => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: 'Donde dejar las copias de seguridad de Flow',
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (res.canceled || !res.filePaths.length) return { cancelado: true };
+  store.get().settings.carpetaRespaldo = res.filePaths[0];
+  store.save();
+  const copia = copiaCompleta(res.filePaths[0]);
+  broadcast();
+  return { ok: true, carpeta: res.filePaths[0], copia: copia };
+});
+
+ipcMain.handle('respaldo:ahora', () => {
+  const res = copiaCompleta(store.get().settings.carpetaRespaldo);
+  broadcast();
+  return res;
+});
+
+ipcMain.handle('respaldo:restaurar', (_e, { ruta }) => {
+  const res = store.restaurar(ruta);
+  if (res.ok) broadcast();
+  return res;
+});
+
+ipcMain.handle('respaldo:abrirCarpeta', (_e, { ruta }) => {
+  shell.showItemInFolder(ruta || store.getFilePath());
+  return { ok: true };
+});
 
 ipcMain.handle('widget:setVisible', (_e, { visible }) => {
   setWidgetVisible(visible);

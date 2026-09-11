@@ -1419,6 +1419,145 @@
 
   // --- Ajustes ------------------------------------------------------------
 
+  /* Las copias de seguridad, y volver a una.
+
+     Existe para que restaurar no sea nunca mas copiar archivos a mano por el
+     Explorador: esa maniobra ya ha sustituido dos veces los datos buenos por
+     una copia vieja sin que nadie se enterara. Aqui se ve que lleva cada una
+     antes de tocar nada, y la actual se guarda antes de pisarla. */
+  M.respaldos = function (S) {
+    const cuando = function (iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString().slice(0, 5);
+    };
+    // El sello del nombre es hora local: 2026-09-11-14-05-00.
+    const delNombre = function (f) {
+      const m = String(f).match(/(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})/);
+      return m ? m[3] + '/' + m[2] + ' ' + m[4] + ':' + m[5] : f;
+    };
+    const kb = function (n) { return Math.round((n || 0) / 1024) + ' KB'; };
+
+    open(
+      '<div class="modal wide"><div class="modal-head">' +
+      '<div><h2>Copias de seguridad</h2>' +
+      '<div class="micro" id="reSub">Buscando copias\u2026</div></div>' +
+      '<button class="icon-btn" data-close>' + String.fromCharCode(215) + '</button></div>' +
+      '<div class="modal-body">' +
+      '<div id="reLista"><div class="micro">Un momento\u2026</div></div>' +
+
+      '<div class="eyebrow" style="margin:20px 0 6px">Copia completa fuera de este disco</div>' +
+      '<div class="micro" style="margin-bottom:10px">' +
+      'Las copias de arriba viven en la misma carpeta que tus datos: te salvan ' +
+      'de un borrado dentro de la app, no de que se pierda el disco. Y solo ' +
+      'llevan el texto. Una copia completa se lleva tambien las imagenes, a ' +
+      'donde tu digas \u2014 un USB, Drive, otro disco \u2014 y se repite sola una vez al dia.' +
+      '</div>' +
+      '<div class="micro" id="reCarpeta" style="margin-bottom:10px"></div>' +
+      '<div class="row tight">' +
+      '<button class="btn" id="reElegir">Elegir carpeta</button>' +
+      '<button class="btn primary" id="reAhora">Copiar ahora</button>' +
+      '</div>' +
+      '<div class="micro" id="reErr" style="margin-top:10px;color:var(--neg)"></div>' +
+      '</div><div class="modal-foot">' +
+      '<button class="btn" data-close>Cerrar</button></div></div>',
+
+      function (o, done) {
+        const err = o.querySelector('#reErr');
+
+        function pintarCarpeta() {
+          const c = S.data.settings.carpetaRespaldo;
+          const ult = S.data.settings.ultimaCopiaExterna;
+          o.querySelector('#reCarpeta').innerHTML = c
+            ? 'En <span style="color:var(--ink-2)">' + H.esc(c) + '</span>' +
+              (ult ? ' \u00b7 ultima copia el ' + H.esc(cuando(ult)) : ' \u00b7 todavia sin copiar')
+            : '<strong>Sin carpeta elegida.</strong> Ahora mismo no hay ninguna ' +
+              'copia fuera de este disco.';
+        }
+
+        async function pintarLista() {
+          const res = await window.hq.respaldo.listar();
+          const copias = (res && res.copias) || [];
+          o.querySelector('#reSub').textContent = copias.length
+            ? copias.length + ' copias, de la mas nueva a la mas vieja'
+            : 'Todavia no hay ninguna copia';
+
+          o.querySelector('#reLista').innerHTML = copias.length
+            ? copias.map(function (c, i) {
+                return (
+                  '<div class="list-row" style="padding-left:0;padding-right:0">' +
+                  '<div class="grow"><strong>' + H.esc(delNombre(c.archivo)) + '</strong>' +
+                  (i === 0 ? ' <span class="tag">la mas nueva</span>' : '') +
+                  '<div class="micro">' +
+                  (c.papeles === null ? 'ilegible' : H.plural(c.papeles, 'papel', 'papeles')) +
+                  (c.imagenes ? ' \u00b7 ' + H.plural(c.imagenes, 'imagen', 'imagenes') : '') +
+                  ' \u00b7 ' + kb(c.bytes) +
+                  (c.guardado ? ' \u00b7 guardado el ' + H.esc(cuando(c.guardado)) : '') +
+                  '</div></div>' +
+                  '<button class="btn sm" data-restaurar="' + H.esc(c.ruta) + '">Restaurar</button>' +
+                  '</div>'
+                );
+              }).join('')
+            : '<div class="micro">Flow hace una copia al abrirse, cuando hay ' +
+              'algo nuevo que copiar.</div>';
+        }
+
+        o.querySelector('#reLista').addEventListener('click', function (e) {
+          const b = e.target.closest('[data-restaurar]');
+          if (!b) return;
+          const ruta = b.getAttribute('data-restaurar');
+          done();
+          M.confirm(
+            'Restaurar esta copia',
+            'Lo que tienes ahora se sustituye por lo que hubiera en la copia. ' +
+            'Antes de pisarlo se guarda una copia de lo actual, asi que se ' +
+            'puede deshacer volviendo a la mas nueva.',
+            async function () {
+              const res = await window.hq.respaldo.restaurar(ruta);
+              if (!res || !res.ok) {
+                M.alert('No se pudo restaurar', (res && res.error) || '');
+                return;
+              }
+              S.ui.retrocesoOculto = true;
+              S.ui.estPapel = null;
+              S.ui.papelDraft = null;
+              S.pausarRender = false;
+              S.render();
+              M.alert('Restaurada', 'Tus datos son los de esa copia.');
+            }
+          );
+        });
+
+        o.querySelector('#reElegir').addEventListener('click', async function () {
+          const res = await window.hq.respaldo.elegirCarpeta();
+          if (!res || res.cancelado) return;
+          if (!res.ok) { err.textContent = res.error || 'No se pudo'; return; }
+          pintarCarpeta();
+          pintarLista();
+        });
+
+        o.querySelector('#reAhora').addEventListener('click', async function () {
+          err.textContent = '';
+          const res = await window.hq.respaldo.ahora();
+          if (!res || !res.ok) {
+            err.textContent = (res && res.error) || 'Elige antes una carpeta';
+            return;
+          }
+          pintarCarpeta();
+          M.alert('Copia hecha',
+            'En ' + res.carpeta + ', con ' + H.plural(res.imagenes, 'imagen', 'imagenes') + '.');
+        });
+
+        o.querySelectorAll('[data-close]').forEach(function (b) {
+          b.addEventListener('click', done);
+        });
+
+        pintarCarpeta();
+        pintarLista();
+      }
+    );
+  };
+
   M.settings = function (S) {
     const st = S.data.settings;
 
@@ -1465,9 +1604,18 @@
       '<div class="eyebrow" style="margin-bottom:8px">Datos</div>' +
       '<div class="micro" style="margin-bottom:8px">Guardados en:<br>' +
       '<span style="color:var(--ink-2)">' + H.esc(S.dataPath) + '</span></div>' +
-      '<div class="row tight" style="margin-bottom:18px">' +
+      '<div class="row tight" style="margin-bottom:10px">' +
       '<button class="btn" id="sReveal">Abrir carpeta</button>' +
       '<button class="btn" id="sImport">Importar de Poker HQ v1</button></div>' +
+      '<div class="row tight" style="margin-bottom:8px">' +
+      '<button class="btn primary" id="sCopias">Copias de seguridad</button></div>' +
+      '<div class="micro" style="margin-bottom:18px">' +
+      (st.carpetaRespaldo
+        ? 'Copia completa en <span style="color:var(--ink-2)">' +
+          H.esc(st.carpetaRespaldo) + '</span>.'
+        : '<strong>No hay ninguna copia fuera de este disco.</strong> Elige una ' +
+          'carpeta ahi dentro: es lo unico que te salva si se pierde el disco.') +
+      '</div>' +
 
       '</div><div class="modal-foot">' +
       '<button class="btn" data-close>Cancelar</button>' +
@@ -1499,6 +1647,11 @@
 
         o.querySelector('#sReveal').addEventListener('click', function () {
           window.hq.revealData();
+        });
+
+        o.querySelector('#sCopias').addEventListener('click', function () {
+          done();
+          M.respaldos(S);
         });
 
         o.querySelector('#sImport').addEventListener('click', function () {

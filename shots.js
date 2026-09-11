@@ -525,6 +525,16 @@ function run(win, app) {
         await win.webContents.executeJavaScript('H.modals.close()');
         await new Promise((r) => setTimeout(r, 300));
 
+        // Las copias de seguridad: la pantalla a la que se viene cuando algo
+        // ha salido mal, asi que conviene verla de vez en cuando.
+        await win.webContents.executeJavaScript('H.modals.respaldos(H.S)');
+        await new Promise((r) => setTimeout(r, 900));
+        fs.writeFileSync(path.join(dir, 'modal-copias.png'),
+          (await win.webContents.capturePage()).toPNG());
+        console.log('  shots/modal-copias.png');
+        await win.webContents.executeJavaScript('H.modals.close()');
+        await new Promise((r) => setTimeout(r, 300));
+
         // El widget, en su propia ventana
         const { BrowserWindow } = require('electron');
         const wid = BrowserWindow.getAllWindows().find((w) =>

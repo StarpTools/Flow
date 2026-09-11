@@ -136,6 +136,13 @@ const DEFAULTS = {
     widgetEnabled: true,
     // 'system' | 'light' | 'dark'
     theme: 'system',
+    /* Carpeta donde dejar una copia completa — datos e imágenes — fuera de
+       %APPDATA%. Un USB, Drive, otro disco: cualquier sitio que no se muera
+       con este. Los respaldos de al lado del archivo no protegen de que se
+       pierda la carpeta entera, que es el fallo que se lo lleva todo. */
+    carpetaRespaldo: null,
+    // Cuando se hizo la ultima copia completa, para no repetirla cada arranque.
+    ultimaCopiaExterna: null,
     /* Flow se abre solo al iniciar sesión, escondido en el widget. Es lo que
        convierte los avisos de los eventos en avisos de verdad: si dependen de
        que te acuerdes de abrir la app, el día que importa no está abierta. */
@@ -151,26 +158,137 @@ const DEFAULTS = {
    Por qué al abrir y no al cerrar: si algo va mal durante la sesión (un fallo,
    un borrado por error, una versión con un bug), la copia de esta mañana está
    intacta. Una copia hecha al cerrar ya tendría el estropicio dentro. */
-const COPIAS = 5;
+/* Cuantas copias se conservan, y de que forma.
+
+   Contar archivos a secas no protege: abrir Flow cinco veces seguidas
+   gastaba las cinco plazas en el mismo dia — en un caso real, tres copias
+   identicas hechas en 17 segundos — y la profundidad entera se iba con ello.
+   Lo que hace falta es tiempo cubierto, no numero de archivos: las ultimas
+   pase lo que pase, y ademas una por dia de la ultima semana. */
+const COPIAS_RECIENTES = 3;
+const DIAS_GUARDADOS = 7;
+
+const PREFIJO_RESPALDO = 'flow-data.respaldo-';
+
+// El sello va en hora LOCAL: es la que lees tu al elegir cual restaurar, y la
+// que agrupa bien por dia (en UTC, una copia de las 20:00 cae al dia siguiente).
+function selloLocal(d) {
+  const n = (x) => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + n(d.getMonth() + 1) + '-' + n(d.getDate()) +
+    '-' + n(d.getHours()) + '-' + n(d.getMinutes()) + '-' + n(d.getSeconds());
+}
+
+function listaRespaldos(dir) {
+  return fs.readdirSync(dir)
+    .filter((f) => f.indexOf(PREFIJO_RESPALDO) === 0 && f.slice(-5) === '.json')
+    .sort();
+}
+
+/* Que copias se quedan: las COPIAS_RECIENTES ultimas, y la mas nueva de cada
+   uno de los ultimos DIAS_GUARDADOS dias. Lo demas sobra. */
+function cualesSeQuedan(nombres) {
+  const quedan = new Set(nombres.slice(-COPIAS_RECIENTES));
+  const porDia = new Map();
+  for (const f of nombres) porDia.set(f.slice(PREFIJO_RESPALDO.length, PREFIJO_RESPALDO.length + 10), f);
+  for (const f of [...porDia.values()].slice(-DIAS_GUARDADOS)) quedan.add(f);
+  return quedan;
+}
 
 function respaldar() {
   if (!fs.existsSync(filePath)) return;
   try {
     const dir = path.dirname(filePath);
-    const previas = fs.readdirSync(dir)
-      .filter((f) => f.indexOf('flow-data.respaldo-') === 0)
-      .sort();
+    const previas = listaRespaldos(dir);
 
-    for (const vieja of previas.slice(0, Math.max(0, previas.length - (COPIAS - 1)))) {
-      try { fs.unlinkSync(path.join(dir, vieja)); } catch (_) {}
+    /* Si nada ha cambiado desde la ultima copia, no se hace otra. Abrir y
+       cerrar la app tres veces no puede costar tres plazas del historial. */
+    const ultima = previas[previas.length - 1];
+    if (ultima) {
+      try {
+        const a = fs.statSync(filePath);
+        const b = fs.statSync(path.join(dir, ultima));
+        if (a.size === b.size &&
+            fs.readFileSync(filePath).equals(fs.readFileSync(path.join(dir, ultima)))) {
+          return;
+        }
+      } catch (_) { /* si no se puede comparar, se copia igual */ }
     }
 
-    const sello = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    fs.copyFileSync(filePath, path.join(dir, 'flow-data.respaldo-' + sello + '.json'));
+    /* El sello llega al segundo, y dos copias del mismo segundo compartirian
+       nombre: la segunda pisaria a la primera sin decir nada. Pasa en cuanto
+       algo abre el almacen dos veces seguidas — restaurar, por ejemplo, que
+       respalda justo antes de pisar. */
+    let nombre = PREFIJO_RESPALDO + selloLocal(new Date());
+    for (let n = 2; fs.existsSync(path.join(dir, nombre + '.json')); n++) {
+      nombre = PREFIJO_RESPALDO + selloLocal(new Date()) + '-' + n;
+    }
+    fs.copyFileSync(filePath, path.join(dir, nombre + '.json'));
+
+    const quedan = cualesSeQuedan(listaRespaldos(dir));
+    for (const f of listaRespaldos(dir)) {
+      if (!quedan.has(f)) { try { fs.unlinkSync(path.join(dir, f)); } catch (_) {} }
+    }
   } catch (err) {
     // Un respaldo que falla no puede impedir que la app arranque.
     console.error('No se pudo respaldar:', err.message);
   }
+}
+
+/* Las copias que hay, con lo que hace falta para elegir una sin abrirla.
+   Lee cada archivo: son pocos y pequenos, y adivinar por el nombre cuantos
+   papeles lleva dentro no se puede. */
+function respaldos() {
+  if (!filePath) return [];
+  const dir = path.dirname(filePath);
+  let nombres = [];
+  try { nombres = listaRespaldos(dir); } catch (_) { return []; }
+
+  return nombres.reverse().map((f) => {
+    const ruta = path.join(dir, f);
+    const out = { archivo: f, ruta: ruta, bytes: 0, papeles: null, guardado: null };
+    try {
+      out.bytes = fs.statSync(ruta).size;
+      const d = JSON.parse(fs.readFileSync(ruta, 'utf8'));
+      out.papeles = Array.isArray(d.reviews) ? d.reviews.length : null;
+      out.imagenes = (d.reviews || []).reduce((n, r) => n + ((r.imagenes || []).length), 0);
+      out.guardado = (d.settings && d.settings.ultimoGuardado) || null;
+    } catch (_) { /* una copia ilegible se lista igual, para poder verla */ }
+    return out;
+  });
+}
+
+/* Restaurar una copia. Antes de pisar nada se guarda lo que hay ahora: si la
+   copia elegida no era la que creias, la de ahora sigue estando. */
+function restaurar(ruta) {
+  if (!filePath) return { ok: false, error: 'El almacen no esta abierto' };
+  try {
+    const crudo = fs.readFileSync(ruta, 'utf8');
+    JSON.parse(crudo);        // que sea legible ANTES de tocar el archivo vivo
+    respaldar();
+    fs.writeFileSync(filePath + '.tmp', crudo, 'utf8');
+    fs.renameSync(filePath + '.tmp', filePath);
+    data = migrate(JSON.parse(crudo));
+    flush();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/* Retroceso: el archivo que acabamos de cargar es ANTERIOR a lo ultimo que
+   Flow guardo. Pasa cuando algo de fuera lo sustituye por una copia vieja —
+   un restaurador, un sincronizador, o copiar un respaldo a mano por el
+   Explorador. La app no puede impedirlo, pero callarselo es lo peor: cargaria
+   tan tranquila y seguirias trabajando sobre el archivo equivocado. */
+function detectarRetroceso() {
+  const mio = (data.settings && data.settings.ultimoGuardado) || null;
+  let masNuevo = null;
+  for (const r of respaldos()) {
+    if (r.guardado && (!masNuevo || r.guardado > masNuevo.guardado)) masNuevo = r;
+  }
+  if (!masNuevo) return null;
+  if (mio && mio >= masNuevo.guardado) return null;
+  return { ahora: mio, copia: masNuevo.guardado, archivo: masNuevo.archivo };
 }
 
 function init(userDataPath) {
@@ -192,6 +310,7 @@ function init(userDataPath) {
     data = JSON.parse(JSON.stringify(DEFAULTS));
     flush();
   }
+  data._retroceso = detectarRetroceso();
   return data;
 }
 
@@ -638,6 +757,10 @@ function flush() {
   }
   const tmp = filePath + '.tmp';
   try {
+    /* La fecha del ultimo guardado viaja DENTRO del archivo. Es lo que
+       permite darse cuenta de que el que hay en disco ha retrocedido: la del
+       sistema de archivos la conserva cualquier copia y no dice nada. */
+    data.settings.ultimoGuardado = new Date().toISOString();
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
     fs.renameSync(tmp, filePath);
     errorGuardado = null;
@@ -657,4 +780,7 @@ function getFilePath() {
   return filePath;
 }
 
-module.exports = { init, get, save, flush, getFilePath, getError, COLORES };
+module.exports = {
+  init, get, save, flush, getFilePath, getError, COLORES,
+  respaldos, restaurar, respaldar, cualesSeQuedan
+};

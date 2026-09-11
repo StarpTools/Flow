@@ -88,6 +88,35 @@ todos los lunes que quedaran, y "esta asignatura todos los días hasta el
 examen" no se podía decir. Los atajos (todos los días / entre semana / fin de
 semana) evitan picar los siete chips a mano. El pasado no se toca nunca.
 
+## No perder datos
+
+Un archivo con anos de apuntes dentro. Las capas, de dentro afuera:
+
+1. **Guardado atomico**: temporal + rename. Un corte a mitad no deja el
+   archivo a medias. Si falla, sale un aviso arriba: un guardado que falla en
+   silencio es la peor forma de perderlo todo.
+2. **Respaldos al lado del archivo**, al abrir la app. La rotacion cubre
+   TIEMPO, no numero de archivos: las 3 ultimas mas una por dia de la ultima
+   semana, y una copia identica a la anterior no gasta plaza. Contando
+   archivos, abrir Flow cinco veces borraba la profundidad entera — paso, con
+   tres copias identicas en 17 segundos.
+3. **Copia completa fuera del disco** (`settings.carpetaRespaldo`): datos MAS
+   imagenes, una vez al dia y a un boton. Es la unica capa que sobrevive a que
+   se pierda la carpeta o el disco, y la unica que cubre `imagenes/` — los
+   respaldos del punto 2 solo llevan el JSON.
+4. **Restaurar desde Ajustes**, viendo que lleva cada copia antes de tocar
+   nada y guardando la actual antes de pisarla. Existe para que restaurar no
+   sea nunca mas copiar archivos por el Explorador: esa maniobra sustituyo dos
+   veces los datos buenos por una copia vieja sin que nadie se enterara.
+5. **Deteccion de retroceso**: cada guardado deja su fecha DENTRO del archivo
+   (`settings.ultimoGuardado`). Si al abrir, lo que hay en disco es anterior a
+   lo ultimo que Flow guardo, sale un aviso ambar con la copia buena. La fecha
+   del sistema de archivos no vale: cualquier copiador la conserva.
+
+Lo que NO hay, a proposito: sincronizacion entre equipos. Resolver conflictos
+de dos copias editadas a la vez es dificil de verdad y, a medias, destruye
+datos — que es justo el fallo del que protege todo lo de arriba.
+
 ## Skill routing
 
 When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
@@ -109,15 +138,16 @@ Key routing rules:
 
 ## Pruebas
 
-Cuatro suites, 464 comprobaciones en total:
+Cuatro suites, 481 comprobaciones en total:
 
-- `HQ_SELFTEST=1 npm start` — app completa (191) · `HQ_SELFTEST=2` (202, incluye
+- `HQ_SELFTEST=1 npm start` — app completa (194) · `HQ_SELFTEST=2` (205, incluye
   verificaciones contra el reloj real). Escriben en un almacén temporal aparte,
   nunca en los datos reales del usuario.
 - `node tools/prueba-repaso.js` — algoritmo SM-2 (30), sin interfaz.
 - `node tools/prueba-notas.js` — formato de las notas, sus marcas y las
   fórmulas (164), sin interfaz.
-- `node tools/prueba-datos.js` — resistencia del archivo de datos (79).
+- `node tools/prueba-datos.js` — resistencia del archivo de datos y las
+  copias de seguridad (93).
 
 El almacén de pruebas (`%TEMP%/flow-pruebas`) **persiste entre corridas** y el
 selftest borra el ámbito "Salud" sin reponerlo: a partir de la segunda corrida

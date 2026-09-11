@@ -31,6 +31,8 @@
       papelDraft: null,
       // 'escribir' | 'ver'
       papelVista: 'escribir',
+      // El aviso de retroceso, apartado a mano durante esta sesión.
+      retrocesoOculto: false,
       // Bandeja de símbolos abierta bajo la barra de marcas.
       simbolos: false,
       // Imagen que se está viendo en el panel de la derecha.

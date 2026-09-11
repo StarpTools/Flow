@@ -31,6 +31,16 @@ contextBridge.exposeInMainWorld('hq', {
     borrar: (notaId, id) => ipcRenderer.invoke('imagen:borrar', { notaId, id })
   },
 
+  /* Copias de seguridad. Por su propio canal, como las imagenes: tocan
+     archivos fuera del almacen y devuelven datos en vez de mutarlo. */
+  respaldo: {
+    listar: () => ipcRenderer.invoke('respaldo:listar'),
+    elegirCarpeta: () => ipcRenderer.invoke('respaldo:elegirCarpeta'),
+    ahora: () => ipcRenderer.invoke('respaldo:ahora'),
+    restaurar: (ruta) => ipcRenderer.invoke('respaldo:restaurar', { ruta }),
+    abrirCarpeta: (ruta) => ipcRenderer.invoke('respaldo:abrirCarpeta', { ruta })
+  },
+
   exportImage: (html, nombre) => ipcRenderer.invoke('export:image', { html, nombre }),
   exportSave: (png, nombre) => ipcRenderer.invoke('export:save', { png, nombre }),
 

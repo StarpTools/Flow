@@ -470,7 +470,8 @@ const SCRIPT = `(async () => {
       ['ajustes', function () { window.H.modals.settings(S); }],
       ['tiempo a mano', function () { window.H.modals.manualSession(S); }],
       ['evento', function () { window.H.modals.evento(S, null, window.H.dateKey()); }],
-      ['dia del plan', function () { window.H.modals.planDay(S, window.H.dateKey()); }]
+      ['dia del plan', function () { window.H.modals.planDay(S, window.H.dateKey()); }],
+      ['copias de seguridad', function () { window.H.modals.respaldos(S); }]
     ];
 
     let cierranTodos = true;
@@ -496,8 +497,24 @@ const SCRIPT = `(async () => {
         await wait(120);
       }
     }
-    ok('los diez modales se cierran con su boton', cierranTodos,
+    ok('los once modales se cierran con su boton', cierranTodos,
        noCierran || 'todos');
+
+    /* --- La capa de copias, de punta a punta -------------------------------
+       El detalle de la rotacion y del retroceso lo cubre prueba-datos.js.
+       Aqui se comprueba que los cables llegan: que la ventana puede pedir la
+       lista y lanzar una copia sin que nada reviente. */
+    const listado = await window.hq.respaldo.listar();
+    ok('la app puede listar sus copias', !!listado && listado.ok === true &&
+       Array.isArray(listado.copias), JSON.stringify(listado).slice(0, 60));
+
+    const sinCarpeta = await window.hq.respaldo.ahora();
+    ok('copiar sin carpeta elegida avisa en vez de reventar',
+       !!sinCarpeta && sinCarpeta.ok === false && !!sinCarpeta.error,
+       (sinCarpeta || {}).error);
+
+    const restMala = await window.hq.respaldo.restaurar('C:/no/existe/nada.json');
+    ok('y restaurar algo que no existe tampoco', !!restMala && restMala.ok === false);
 
     window.H.modals.notaTipo(S, carpetaId);
     await wait(170);

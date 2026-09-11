@@ -29,6 +29,7 @@
     S.session = payload.session;
     if (S.data.settings.theme !== temaAntes) applyTheme(S.data.settings.theme);
     avisoGuardado(payload.errorGuardado);
+    avisoRetroceso(S.data._retroceso);
     S.render();
   }
 
@@ -47,11 +48,44 @@
     el.classList.remove('hidden');
   }
 
+  /* El archivo que se abrio es anterior al ultimo que Flow guardo. Significa
+     que algo de fuera lo ha sustituido por una copia vieja, y que estas a
+     punto de trabajar sobre un archivo al que le faltan dias. Ha pasado dos
+     veces de verdad: callarselo es perder el trabajo dos veces. */
+  function avisoRetroceso(r) {
+    const el = H.el('avisoRetroceso');
+    if (!el) return;
+    if (!r || S.ui.retrocesoOculto) {
+      el.classList.add('hidden');
+      return;
+    }
+    const cuando = (iso) => {
+      if (!iso) return 'sin fecha';
+      const d = new Date(iso);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString().slice(0, 5);
+    };
+    el.innerHTML =
+      '<span class="grow">Este archivo es del ' + H.esc(cuando(r.ahora)) +
+      ', pero Flow guardo algo mas nuevo el ' + H.esc(cuando(r.copia)) +
+      '. Alguien o algo lo ha sustituido por una copia vieja.</span>' +
+      '<button class="btn sm" id="verCopias">Ver las copias</button>' +
+      '<button class="btn sm" id="seguirAsi">Seguir asi</button>';
+    el.classList.remove('hidden');
+    el.querySelector('#verCopias').addEventListener('click', function () {
+      H.modals.respaldos(S);
+    });
+    el.querySelector('#seguirAsi').addEventListener('click', function () {
+      S.ui.retrocesoOculto = true;
+      el.classList.add('hidden');
+    });
+  }
+
   async function boot() {
     const st = await window.hq.getState();
     S.data = st.data;
     S.session = st.session;
     S.dataPath = st.dataPath;
+    avisoRetroceso(st.data._retroceso);
 
     applyTheme(st.data.settings.theme);
 
