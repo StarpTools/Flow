@@ -570,6 +570,71 @@ ok('null tiene cero palabras', N.palabras(null) === 0);
      N.aTextoPlano('El ' + D + 'sigma_max' + D + ' manda') === 'El sigma_max manda');
 }
 
+/* --- Listas numeradas -------------------------------------------------------
+
+   Dos fallos que se veian igual desde fuera: la numeracion siempre empezaba
+   en 1. Uno era que una linea en blanco entre dos puntos partia la lista en
+   varias listas de un punto cada una; el otro, que el numero que escribias no
+   llegaba al HTML, asi que empezar en 2 era imposible. */
+{
+  const NL = String.fromCharCode(10);
+
+  ok('los puntos seguidos van en una sola lista',
+     N.aHtml('1. uno' + NL + '2. dos' + NL + '3. tres') ===
+     '<ol><li>uno</li><li>dos</li><li>tres</li></ol>');
+
+  ok('un hueco entre puntos NO parte la lista',
+     N.aHtml('1. uno' + NL + NL + '2. dos' + NL + NL + '3. tres') ===
+     '<ol><li>uno</li><li>dos</li><li>tres</li></ol>',
+     N.aHtml('1. uno' + NL + NL + '2. dos'));
+
+  ok('si empiezas en 2, la lista empieza en 2',
+     N.aHtml('2. dos' + NL + '3. tres').indexOf('<ol start="2">') === 0,
+     N.aHtml('2. dos' + NL + '3. tres'));
+
+  ok('y en 7 empieza en 7',
+     N.aHtml('7. siete' + NL + NL + '8. ocho').indexOf('<ol start="7">') === 0);
+
+  ok('empezando en 1 no hace falta decirlo',
+     N.aHtml('1. uno').indexOf('start') === -1, N.aHtml('1. uno'));
+
+  ok('el numero del segundo punto no manda: lo pone el navegador',
+     N.aHtml('1. uno' + NL + '9. dos') === '<ol><li>uno</li><li>dos</li></ol>');
+
+  // Lo que SI tiene que cerrar una lista.
+  ok('un parrafo detras cierra la lista',
+     N.aHtml('1. uno' + NL + NL + 'Ya no es lista.') ===
+     '<ol><li>uno</li></ol><p>Ya no es lista.</p>');
+
+  ok('un titulo detras tambien',
+     N.aHtml('1. uno' + NL + NL + '## Otro').indexOf('</ol><h2>') !== -1);
+
+  ok('y cambiar de tipo de lista tambien',
+     N.aHtml('1. uno' + NL + '- dos').indexOf('</ol><ul>') !== -1);
+
+  ok('las vinetas se juntan igual con un hueco en medio',
+     N.aHtml('- a' + NL + NL + '- b') === '<ul><li>a</li><li>b</li></ul>');
+
+  // Y lo que la linea en blanco SI sigue cerrando.
+  ok('un hueco sigue partiendo dos parrafos',
+     (N.aHtml('uno' + NL + NL + 'dos').match(/<p>/g) || []).length === 2);
+
+  ok('y sigue cerrando una caja',
+     (N.aHtml('!! ojo' + NL + NL + '!! otra').match(/nota-caja/g) || []).length === 2);
+
+  /* El boton de lista numerada cuenta solo lo que numera. Con el indice del
+     bloque, un hueco en medio se llevaba su numero y salia 1, 3, 4. */
+  const conHueco = 'uno' + NL + NL + 'dos' + NL + 'tres';
+  ok('el boton numera saltandose los huecos, sin saltarse numeros',
+     N.prefijar(conHueco, 0, conHueco.length, '1. ').texto ===
+     '1. uno' + NL + NL + '2. dos' + NL + '3. tres',
+     JSON.stringify(N.prefijar(conHueco, 0, conHueco.length, '1. ').texto));
+
+  const seguidas = 'a' + NL + 'b' + NL + 'c';
+  ok('y sin huecos cuenta igual',
+     N.prefijar(seguidas, 0, seguidas.length, '1. ').texto === '1. a' + NL + '2. b' + NL + '3. c');
+}
+
 
 
 console.log('\n===== ' + (fallan === 0

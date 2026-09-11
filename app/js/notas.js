@@ -326,10 +326,15 @@
       lista = null;
     }
 
-    function abrirLista(tipo) {
+    /* `inicio` solo lo usa la numerada: si el primer punto que escribes es un
+       3, la lista empieza en 3. Los demas numeros no se miran — los pone el
+       navegador — porque renumerar a mano una lista a la que le metes un punto
+       en medio es justo el trabajo que no deberias estar haciendo. */
+    function abrirLista(tipo, inicio) {
       if (lista === tipo) return;
       cerrarLista();
-      out.push('<' + tipo + '>');
+      const desde = tipo === 'ol' && inicio > 1 ? ' start="' + inicio + '"' : '';
+      out.push('<' + tipo + desde + '>');
       lista = tipo;
     }
 
@@ -380,9 +385,16 @@
         continue;
       }
 
+      /* Una linea en blanco cierra el parrafo y la caja, pero NO la lista.
+
+         Separar los puntos con un hueco es de lo mas normal al escribir, y
+         cerrando la lista ahi cada punto acababa en su propia lista: los tres
+         salian numerados como 1. Lo que de verdad cierra una lista es que
+         llegue algo que no es un punto, y de eso ya se encarga cada rama. */
       if (!linea) {
         cerrandoCon = null;
-        cerrarBloques();
+        cerrarParrafo();
+        cerrarCaja();
         continue;
       }
 
@@ -469,12 +481,12 @@
         continue;
       }
 
-      const numero = linea.match(/^\d+[.)]\s+(.*)$/);
+      const numero = linea.match(/^(\d+)[.)]\s+(.*)$/);
       if (numero) {
         cerrarParrafo();
         cerrarCaja();
-        abrirLista('ol');
-        out.push('<li>' + N.enLinea(N.escapar(numero[1])) + '</li>');
+        abrirLista('ol', parseInt(numero[1], 10));
+        out.push('<li>' + N.enLinea(N.escapar(numero[2])) + '</li>');
         continue;
       }
 
@@ -654,13 +666,18 @@
     // algunas, lo pone en todas: eso hace que pulsar dos veces sea reversible.
     const todas = !vacio && conTexto.every(function (l) { return patron.test(l); });
 
-    const nuevo = bloque.map(function (l, i) {
+    /* La cuenta avanza solo en las líneas que se numeran de verdad. Con el
+       índice del bloque, una línea en blanco en medio se llevaba su número por
+       delante y la lista salía 1, 3, 4. */
+    let cuenta = 0;
+    const nuevo = bloque.map(function (l) {
       if (l.trim() === '' && !vacio) return l;
       // Fuera cualquier prefijo previo: una línea no puede ser título y punto
       // de lista a la vez, y encadenarlos produce "## - ## texto".
       const desnudo = l.replace(/^(#{1,3}\s+|[-*]\s+|\d+[.)]\s+|!!\s*|>>\s*)/, '');
       if (todas) return desnudo;
-      return (numerado ? i + 1 + '. ' : prefijo) + desnudo;
+      cuenta += 1;
+      return (numerado ? cuenta + '. ' : prefijo) + desnudo;
     });
 
     const resultado = nuevo.join('\n');

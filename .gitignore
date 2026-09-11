@@ -18,3 +18,7 @@ app/assets/flow.ico
 *.log
 flow-data*.json
 dist/
+
+# Carpeta para llevarse la app y los apuntes: lleva datos personales dentro.
+para-la-laptop/
+rescate-*/

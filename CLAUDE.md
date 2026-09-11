@@ -109,14 +109,14 @@ Key routing rules:
 
 ## Pruebas
 
-Cuatro suites, 450 comprobaciones en total:
+Cuatro suites, 464 comprobaciones en total:
 
 - `HQ_SELFTEST=1 npm start` — app completa (191) · `HQ_SELFTEST=2` (202, incluye
   verificaciones contra el reloj real). Escriben en un almacén temporal aparte,
   nunca en los datos reales del usuario.
 - `node tools/prueba-repaso.js` — algoritmo SM-2 (30), sin interfaz.
 - `node tools/prueba-notas.js` — formato de las notas, sus marcas y las
-  fórmulas (150), sin interfaz.
+  fórmulas (164), sin interfaz.
 - `node tools/prueba-datos.js` — resistencia del archivo de datos (79).
 
 El almacén de pruebas (`%TEMP%/flow-pruebas`) **persiste entre corridas** y el
